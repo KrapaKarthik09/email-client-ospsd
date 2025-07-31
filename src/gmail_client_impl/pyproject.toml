@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gmail-client-impl"
+version = "0.1.0"
+description = "Gmail implementation of the EmailClient interface"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Karthik Krapa", email = "karthik.krapa@nyu.edu"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "google-auth==2.23.4",
+    "google-auth-oauthlib==1.1.0", 
+    "google-auth-httplib2==0.1.1",
+    "google-api-python-client==2.108.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "mypy>=1.7.1",
+    "ruff>=0.1.7",
+    "types-requests>=2.31.0.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/kkrapa/email-client-ospsd"
+Repository = "https://github.com/kkrapa/email-client-ospsd"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = ["ALL"]
+ignore = [
+    "PLR0913",  # Too many arguments to function call
+    "S101",     # Use of assert detected - needed for tests
+    "E501",     # Line too long - handled by formatter
+    "D100",     # Missing docstring in public module
+    "D104",     # Missing docstring in public package
+    "BLE001",   # Do not catch blind exception - sometimes necessary for API calls
+    "PLR0912",  # Too many branches - acceptable for message parsing
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "googleapiclient.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "google.*"
+ignore_missing_imports = true 
