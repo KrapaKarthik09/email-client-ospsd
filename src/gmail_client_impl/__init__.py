@@ -481,13 +481,13 @@ class GmailClient(EmailClient):
             return folder_list
 
     def _parse_gmail_message(
-        self: "GmailClient", msg: dict[str, Any]
+        self: "GmailClient", msg: dict[str, Any] | str
     ) -> Optional[EmailMessage]:
         """Parse a Gmail API message into an EmailMessage object.
 
         Args:
         ----
-            msg: Gmail API message object
+            msg: Gmail API message object (dictionary) or message ID (string)
 
         Returns:
         -------
@@ -495,6 +495,24 @@ class GmailClient(EmailClient):
 
         """
         try:
+            # Handle case when a string (message ID) is passed instead of a message object
+            if isinstance(msg, str):
+                # If we received a message ID string, try to fetch the full message
+                try:
+                    if not self.service:
+                        logger.error("Cannot fetch message: Not authenticated")
+                        return None
+
+                    msg = (
+                        self.service.users()
+                        .messages()
+                        .get(userId="me", id=msg)
+                        .execute()
+                    )
+                except Exception as e:
+                    logger.error("Failed to fetch message from ID: %s", e)
+                    return None
+
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
 
             # Extract basic information
