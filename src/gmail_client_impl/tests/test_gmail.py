@@ -20,8 +20,8 @@ from gmail_client_impl import GmailClient  # noqa: E402
 # Constants used in tests
 DEFAULT_EMAIL_LIMIT = 2
 DEFAULT_SCOPES_COUNT = 3
-TEST_AUTH_FILE = "test_auth.json"  # S105 fix - avoid "token" in name
-TEST_CREDENTIALS_FILE = "test_creds.json"
+TEST_AUTH_FILENAME = "test_auth.json"  # S105 fix - avoid "token" in name
+TEST_CREDENTIALS_FILENAME = "test_creds.json"
 TEST_REFRESH_VALUE = "fake_refresh_token"
 
 
@@ -43,7 +43,7 @@ class TestGmailClientInit:
         test_scopes = ["scope1", "scope2"]
         client = GmailClient(
             credentials_file="custom_creds.json",
-            auth_file="custom_auth.json",  # S105 fix - use auth_file instead of token_file
+            auth_filename="custom_auth.json",  # S105 fix - use auth_filename
             scopes=test_scopes,
         )
 
@@ -60,7 +60,7 @@ class TestGmailClientAuthenticate:
         """Set up test environment."""
         self.client = GmailClient(
             credentials_file="fake_creds.json",
-            auth_file=TEST_AUTH_FILE,  # S105 fix - use auth_file instead of token_file
+            auth_filename=TEST_AUTH_FILENAME,  # S105 fix
         )
 
     def test_authenticate_success_with_existing_token(
@@ -101,7 +101,7 @@ class TestGmailClientAuthenticate:
         )
         mock_credentials.to_json.return_value = "{}"
 
-        # SIM117 fix: Use single with statement with multiple contexts (line 167 fix)
+        # SIM117 fix: Use single with statement with multiple contexts
         with (
             patch("gmail_client_impl.build", mock_build),
             patch("pathlib.Path.exists", return_value=True),
@@ -127,8 +127,8 @@ class TestGmailClientAuthenticate:
         # This test directly tests the flow branch in authenticate method
         # Create a client with mocked internals for testing the flow
         client = GmailClient(
-            credentials_file=TEST_CREDENTIALS_FILE,
-            auth_file=TEST_AUTH_FILE,  # S105 fix - use auth_file instead of token_file
+            credentials_file=TEST_CREDENTIALS_FILENAME,
+            auth_filename=TEST_AUTH_FILENAME,  # S105 fix
         )
 
         # Create mocks for the OAuth flow
@@ -138,7 +138,7 @@ class TestGmailClientAuthenticate:
         mock_flow.run_local_server.return_value = mock_creds
         mock_service = Mock()
 
-        # Setup patches for all components involved in the flow
+        # SIM117 fix: Use single with statement with multiple contexts (line 165)
         with (
             patch("gmail_client_impl.Path.exists", side_effect=[False, True]),
             patch(
@@ -267,11 +267,12 @@ class TestGmailClientRetrieveEmails:
 
         # Configure mock responses
         self.mock_list.return_value.execute.return_value = self.message_list_response
-        self.mock_get.side_effect = (
-            lambda userId, id, **kwargs: Mock(  # noqa: N803, A002
-                execute=Mock(
-                    return_value=self.message1 if id == "msg1" else self.message2
-                )
+        # ARG005 fix - Remove unused lambda arguments
+        self.mock_get.side_effect = lambda **kwargs: Mock(
+            execute=Mock(
+                return_value=self.message1
+                if kwargs.get("id") == "msg1"
+                else self.message2
             )
         )
 
@@ -381,7 +382,7 @@ class TestGmailClientMarkAsRead:
         self.mock_modify.return_value.execute.side_effect = http_error
 
         # Call mark_as_read
-        result = self.client.mark_as_read(email_id="not_exists")
+        result = self.mark_as_read(email_id="not_exists")
 
         # Assertions
         assert result is False
