@@ -307,7 +307,7 @@ class EmailClient(ABC):
         """
 
 
-def get_client(provider: str = "gmail", **kwargs: str) -> EmailClient:  # Fixed ANN401
+def get_client(provider: str = "gmail", **kwargs: str) -> EmailClient:
     """Get an email client implementation.
 
     Args:

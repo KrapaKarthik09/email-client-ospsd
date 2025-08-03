@@ -55,13 +55,9 @@ ignore = [
     "D104",     # Missing docstring in public package
     "BLE001",   # Do not catch blind exception - sometimes necessary for API calls
     "PLR0912",  # Too many branches - acceptable for message parsing
-    "C901",     # Function too complex - authenticate method is inherently complex
-    "TRY300",   # Consider moving to else block - sometimes less readable
-    "S105",     # Possible hardcoded password - false positives on "token_file"
-    "S106",     # Possible hardcoded password argument - false positives
-    "SIM117",   # Use single with statement - sometimes less readable
+    "D203",     # Conflicts with D211 - choose D211 (no blank line before class)
+    "D213",     # Conflicts with D212 - choose D212 (multi-line summary first line)
 ]
-
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true

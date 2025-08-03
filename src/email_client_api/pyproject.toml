@@ -46,6 +46,8 @@ ignore = [
     "E501",     # Line too long - handled by formatter
     "D100",     # Missing docstring in public module
     "D104",     # Missing docstring in public package
+    "D203",     # Conflicts with D211 - choose D211 (no blank line before class)
+    "D213",     # Conflicts with D212 - choose D212 (multi-line summary first line)
 ]
 
 [tool.mypy]
@@ -61,4 +63,4 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-strict_equality = true 
+strict_equality = true
