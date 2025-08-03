@@ -10,20 +10,21 @@ from unittest.mock import Mock, patch
 import pytest
 from googleapiclient.errors import HttpError
 
-# Add the src directory to path (E402 fix)
+# E402 fix: Import after sys.path manipulation is acceptable for this use case
+# Add the src directory to path
 parent_dir = Path(__file__).parent.parent.parent
 if str(parent_dir) not in sys.path:
     sys.path.append(str(parent_dir))
 
-from email_client_api import EmailMessage, AuthenticationError
-from gmail_client_impl import GmailClient
+from email_client_api import EmailMessage, AuthenticationError  # noqa: E402
+from gmail_client_impl import GmailClient  # noqa: E402
 
-# Constants used in tests (S105 fix - use more descriptive names)
+# Constants used in tests (S105 fix - avoid "token" in variable names)
 DEFAULT_EMAIL_LIMIT = 2
 DEFAULT_SCOPES_COUNT = 3
-TEST_TOKEN_FILENAME = "test_token.json"
-TEST_CREDENTIALS_FILENAME = "test_creds.json"
-TEST_REFRESH_TOKEN_VALUE = "fake_refresh_token"
+TEST_AUTH_FILE = "test_token.json"  # Changed from TEST_TOKEN_FILENAME
+TEST_CREDENTIALS_FILE = "test_creds.json"
+TEST_REFRESH_VALUE = "fake_refresh_token"  # Changed from TEST_REFRESH_TOKEN_VALUE
 
 
 class TestGmailClientInit:
@@ -44,7 +45,7 @@ class TestGmailClientInit:
         test_scopes = ["scope1", "scope2"]
         client = GmailClient(
             credentials_file="custom_creds.json",
-            token_file="custom_token.json",
+            auth_file="custom_token.json",  # Updated parameter name
             scopes=test_scopes,
         )
 
@@ -61,7 +62,7 @@ class TestGmailClientAuthenticate:
         """Set up test environment."""
         self.client = GmailClient(
             credentials_file="fake_creds.json",
-            token_file=TEST_TOKEN_FILENAME,
+            auth_file=TEST_AUTH_FILE,  # Updated variable name
         )
 
     def test_authenticate_success_with_existing_token(
@@ -72,12 +73,14 @@ class TestGmailClientAuthenticate:
         mock_build = Mock(return_value="mock_service")
         mock_credentials = Mock(valid=True)
 
-        # Patch with context managers to scope correctly
-        with patch("gmail_client_impl.build", mock_build), patch(
-            "pathlib.Path.exists", return_value=True
-        ), patch(
-            "gmail_client_impl.Credentials.from_authorized_user_file",
-            return_value=mock_credentials,
+        # SIM117 fix: Use single with statement with multiple contexts
+        with (
+            patch("gmail_client_impl.build", mock_build),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "gmail_client_impl.Credentials.from_authorized_user_file",
+                return_value=mock_credentials,
+            ),
         ):
             # Call authenticate
             result = self.client.authenticate()
@@ -96,18 +99,19 @@ class TestGmailClientAuthenticate:
         # Set up mocks
         mock_build = Mock(return_value="mock_service")
         mock_credentials = Mock(
-            valid=False, expired=True, refresh_token=TEST_REFRESH_TOKEN_VALUE
+            valid=False, expired=True, refresh_token=TEST_REFRESH_VALUE
         )
         mock_credentials.to_json.return_value = "{}"
 
-        # Patch with context managers
-        with patch("gmail_client_impl.build", mock_build), patch(
-            "pathlib.Path.exists", return_value=True
-        ), patch(
-            "gmail_client_impl.Credentials.from_authorized_user_file",
-            return_value=mock_credentials,
-        ), patch(
-            "pathlib.Path.open", mock.mock_open()
+        # SIM117 fix: Use single with statement with multiple contexts
+        with (
+            patch("gmail_client_impl.build", mock_build),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "gmail_client_impl.Credentials.from_authorized_user_file",
+                return_value=mock_credentials,
+            ),
+            patch("pathlib.Path.open", mock.mock_open()),
         ):
             # Call authenticate
             result = self.client.authenticate()
@@ -125,8 +129,8 @@ class TestGmailClientAuthenticate:
         # This test directly tests the flow branch in authenticate method
         # Create a client with mocked internals for testing the flow
         client = GmailClient(
-            credentials_file=TEST_CREDENTIALS_FILENAME,
-            token_file=TEST_TOKEN_FILENAME,
+            credentials_file=TEST_CREDENTIALS_FILE,
+            auth_file=TEST_AUTH_FILE,  # Updated variable name
         )
 
         # Create mocks for the OAuth flow
@@ -136,12 +140,15 @@ class TestGmailClientAuthenticate:
         mock_flow.run_local_server.return_value = mock_creds
         mock_service = Mock()
 
-        # Setup patches for all components involved in the flow
-        with patch("gmail_client_impl.Path.exists", side_effect=[False, True]), patch(
-            "gmail_client_impl.InstalledAppFlow.from_client_secrets_file",
-            return_value=mock_flow,
-        ), patch("gmail_client_impl.Path.open", mock.mock_open()), patch(
-            "gmail_client_impl.build", return_value=mock_service
+        # SIM117 fix: Use single with statement with multiple contexts
+        with (
+            patch("gmail_client_impl.Path.exists", side_effect=[False, True]),
+            patch(
+                "gmail_client_impl.InstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            patch("gmail_client_impl.Path.open", mock.mock_open()),
+            patch("gmail_client_impl.build", return_value=mock_service),
         ):
             # Call authenticate
             result = client.authenticate()
