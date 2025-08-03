@@ -510,7 +510,7 @@ class GmailClient(EmailClient):
                         .execute()
                     )
                 except Exception as e:
-                    logger.error("Failed to fetch message from ID: %s", e)
+                    logger.exception("Failed to fetch message from ID: %s", e)
                     return None
 
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
