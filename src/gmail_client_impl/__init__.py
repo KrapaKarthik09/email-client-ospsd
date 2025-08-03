@@ -20,11 +20,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# E402 fix: Import after sys.path manipulation is acceptable for this use case
 # Add parent directory to path to allow relative imports
 parent_dir = Path(__file__).parent.parent
-if str(parent_dir) not in sys.path:
-    sys.path.append(str(parent_dir))
+sys.path.append(str(parent_dir))
 
 from email_client_api import (  # noqa: E402
     AuthenticationError,
@@ -46,60 +44,9 @@ SCOPES = [
 # HTTP status codes
 HTTP_NOT_FOUND = 404
 
-# Default file names (S105 fix - avoid "token" in variable names)
-DEFAULT_CREDENTIALS_FILE = "credentials.json"
-DEFAULT_AUTH_FILE = "token.json"  # Changed from DEFAULT_TOKEN_FILENAME
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def _raise_authentication_error(msg: str) -> None:
-    """Raise an authentication error with the given message."""
-    raise AuthenticationError(msg)
-
-
-def _load_existing_credentials(
-    token_path: Path, scopes: list[str]
-) -> Optional[Credentials]:
-    """Load existing credentials from file if available."""
-    if token_path.exists():
-        return Credentials.from_authorized_user_file(str(token_path), scopes)
-    return None
-
-
-def _refresh_credentials(creds: Credentials) -> bool:
-    """Attempt to refresh expired credentials."""
-    try:
-        creds.refresh(Request())
-        logger.info("Access token refreshed successfully")
-        return True
-    except Exception as e:
-        logger.warning("Token refresh failed: %s", e)
-        return False
-
-
-def _perform_oauth_flow(credentials_path: Path, scopes: list[str]) -> Credentials:
-    """Perform OAuth flow to obtain new credentials."""
-    if not credentials_path.exists():
-        error_msg = f"Credentials file not found: {credentials_path}"
-        raise AuthenticationError(error_msg)
-
-    flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), scopes)
-    creds = flow.run_local_server(port=8080)
-    logger.info("New credentials obtained")
-    return creds
-
-
-def _save_credentials(token_path: Path, creds: Credentials) -> None:
-    """Save credentials to file for future use."""
-    try:
-        with token_path.open("w", encoding="utf-8") as token:
-            token.write(creds.to_json())
-    except (AttributeError, TypeError):
-        # Skip token writing in test environment where creds is a Mock
-        logger.debug("Skipping token writing in test environment")
 
 
 class GmailClient(EmailClient):
@@ -111,8 +58,8 @@ class GmailClient(EmailClient):
 
     def __init__(
         self: "GmailClient",
-        credentials_file: str = DEFAULT_CREDENTIALS_FILE,
-        token_file: str = DEFAULT_AUTH_FILE,  # Updated variable name
+        credentials_file: str = "credentials.json",
+        token_file: str = "token.json",
         scopes: Optional[list[str]] = None,
     ) -> None:
         """Initialize the Gmail client.
@@ -131,7 +78,7 @@ class GmailClient(EmailClient):
         self.credentials: Optional[Credentials] = None
         logger.info("GmailClient initialized")
 
-    def authenticate(self: "GmailClient") -> bool:  # noqa: C901
+    def authenticate(self: "GmailClient") -> bool:
         """Authenticate with Gmail API using OAuth 2.0.
 
         Returns
@@ -144,30 +91,60 @@ class GmailClient(EmailClient):
 
         """
         try:
+            creds = None
             token_path = Path(self.token_file)
             credentials_path = Path(self.credentials_file)
 
             # Load existing token if available
-            creds = _load_existing_credentials(token_path, self.scopes)
+            if token_path.exists():
+                creds = Credentials.from_authorized_user_file(
+                    str(token_path),
+                    self.scopes,
+                )
 
-            # Handle credential validation and refresh
-            if creds and not creds.valid and creds.expired and creds.refresh_token:
-                if not _refresh_credentials(creds):
-                    creds = None
-
-            # Perform OAuth flow if no valid credentials
+            # If there are no (valid) credentials available, let the user log in
             if not creds or not creds.valid:
-                creds = _perform_oauth_flow(credentials_path, self.scopes)
-                _save_credentials(token_path, creds)
+                if creds and creds.expired and creds.refresh_token:
+                    try:
+                        creds.refresh(Request())
+                        logger.info("Access token refreshed successfully")
+                    except Exception as e:
+                        logger.warning("Token refresh failed: %s", e)
+                        creds = None
+
+                # If still no valid credentials, perform OAuth flow
+                if not creds:
+                    # Check credentials file exists
+                    if not credentials_path.exists():
+                        error_msg = (
+                            f"Credentials file not found: {self.credentials_file}"
+                        )
+                        raise AuthenticationError(error_msg)
+
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        str(credentials_path),
+                        self.scopes,
+                    )
+                    creds = flow.run_local_server(port=8080)
+                    logger.info("New credentials obtained")
+
+                    # Save the credentials for the next run
+                    try:
+                        with token_path.open("w", encoding="utf-8") as token:
+                            token.write(creds.to_json())
+                    except (AttributeError, TypeError):
+                        # Skip token writing in test environment where creds is a Mock
+                        logger.debug("Skipping token writing in test environment")
 
         except AuthenticationError:
             # Re-raise authentication errors without wrapping
             raise
         except Exception as e:
-            logger.exception("Authentication failed")
+            logger.exception("Authentication failed: %s", e)
             raise AuthenticationError(f"Gmail authentication failed: {e}") from e
         else:
-            # TRY300 fix - Move success logic to else block
+            # TRY300 fix - Move success logic to else block (line 77 fix)
+            # Set instance variables and build service
             self.credentials = creds
             self.service = build("gmail", "v1", credentials=creds)
             logger.info("Gmail service initialized successfully")
@@ -224,13 +201,14 @@ class GmailClient(EmailClient):
             )
 
         except HttpError as e:
-            logger.exception("HTTP error sending email")
+            logger.error("HTTP error sending email: %s", e)
             raise EmailClientError(f"Failed to send email: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error sending email")
             raise EmailClientError(f"Failed to send email: {e}") from e
         else:
-            # TRY300 fix - Move success logic to else block
+            # TRY300 fix - Move success logic to else block (line 154 fix)
+            # SIM102 fix - Combine the success logic in else block instead of nested if
             logger.info("Email sent successfully. Message ID: %s", result.get("id"))
             return True
 
@@ -297,7 +275,7 @@ class GmailClient(EmailClient):
                     continue
 
         except HttpError as e:
-            logger.exception("HTTP error retrieving emails")
+            logger.error("HTTP error retrieving emails: %s", e)
             error_msg = f"Failed to retrieve emails: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -338,7 +316,7 @@ class GmailClient(EmailClient):
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for deletion: %s", email_id)
                 return False
-            logger.exception("HTTP error deleting email")
+            logger.error("HTTP error deleting email: %s", e)
             raise EmailClientError(f"Failed to delete email: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error deleting email")
@@ -379,7 +357,7 @@ class GmailClient(EmailClient):
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for marking as read: %s", email_id)
                 return False
-            logger.exception("HTTP error marking email as read")
+            logger.error("HTTP error marking email as read: %s", e)
             raise EmailClientError(f"Failed to mark email as read: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error marking email as read")
@@ -451,7 +429,7 @@ class GmailClient(EmailClient):
                     continue
 
         except HttpError as e:
-            logger.exception("HTTP error searching emails")
+            logger.error("HTTP error searching emails: %s", e)
             error_msg = f"Failed to search emails: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -469,7 +447,7 @@ class GmailClient(EmailClient):
         -------
             List of folder/label names
 
-        Raises:
+        Raises
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If folder retrieval fails
@@ -483,7 +461,7 @@ class GmailClient(EmailClient):
             results = self.service.users().labels().list(userId="me").execute()
             labels = results.get("labels", [])
         except HttpError as e:
-            logger.exception("HTTP error retrieving folders")
+            logger.error("HTTP error retrieving folders: %s", e)
             error_msg = f"Failed to retrieve folders: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -491,7 +469,7 @@ class GmailClient(EmailClient):
             error_msg = f"Failed to retrieve folders: {e}"
             raise EmailClientError(error_msg) from e
         else:
-            # TRY300 fix - Move success logic to else block
+            # TRY300 fix - Move success logic to else block (line 598 fix)
             # Extract label names
             folder_list = [label["name"] for label in labels if label.get("name")]
             logger.info("Retrieved %d folders/labels", len(folder_list))
