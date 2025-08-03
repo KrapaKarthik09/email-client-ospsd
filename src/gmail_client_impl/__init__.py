@@ -20,9 +20,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Add parent directory to path to allow relative imports
+# Add parent directory to path to allow relative imports (E402 fix)
 parent_dir = Path(__file__).parent.parent
-sys.path.append(str(parent_dir))
+if str(parent_dir) not in sys.path:
+    sys.path.append(str(parent_dir))
 
 from email_client_api import (
     AuthenticationError,
@@ -44,9 +45,9 @@ SCOPES = [
 # HTTP status codes
 HTTP_NOT_FOUND = 404
 
-# Default file names
-DEFAULT_CREDENTIALS_FILE = "credentials.json"
-DEFAULT_TOKEN_FILE = "token.json"
+# Default file names (S105 fix - use more descriptive names)
+DEFAULT_CREDENTIALS_FILENAME = "credentials.json"
+DEFAULT_TOKEN_FILENAME = "token.json"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -67,8 +68,8 @@ class GmailClient(EmailClient):
 
     def __init__(
         self: "GmailClient",
-        credentials_file: str = DEFAULT_CREDENTIALS_FILE,
-        token_file: str = DEFAULT_TOKEN_FILE,
+        credentials_file: str = DEFAULT_CREDENTIALS_FILENAME,
+        token_file: str = DEFAULT_TOKEN_FILENAME,
         scopes: Optional[list[str]] = None,
     ) -> None:
         """Initialize the Gmail client.
@@ -145,18 +146,19 @@ class GmailClient(EmailClient):
                         # Skip token writing in test environment where creds is a Mock
                         logger.debug("Skipping token writing in test environment")
 
-            # Set instance variables and build service
-            self.credentials = creds
-            self.service = build("gmail", "v1", credentials=creds)
-            logger.info("Gmail service initialized successfully")
-            return True
-
         except AuthenticationError:
             # Re-raise authentication errors without wrapping
             raise
         except Exception as e:
             logger.exception("Authentication failed")
             raise AuthenticationError(f"Gmail authentication failed: {e}") from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            # Set instance variables and build service
+            self.credentials = creds
+            self.service = build("gmail", "v1", credentials=creds)
+            logger.info("Gmail service initialized successfully")
+            return True
 
     def send_email(
         self: "GmailClient", recipient: str, subject: str, body: str
@@ -208,15 +210,16 @@ class GmailClient(EmailClient):
                 .execute()
             )
 
-            logger.info("Email sent successfully. Message ID: %s", result.get("id"))
-            return True
-
         except HttpError as e:
             logger.exception("HTTP error sending email")
             raise EmailClientError(f"Failed to send email: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error sending email")
             raise EmailClientError(f"Failed to send email: {e}") from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Email sent successfully. Message ID: %s", result.get("id"))
+            return True
 
     def retrieve_emails(
         self: "GmailClient",
@@ -280,9 +283,6 @@ class GmailClient(EmailClient):
                     logger.warning("Failed to parse message %s: %s", message["id"], e)
                     continue
 
-            logger.info("Retrieved %d emails from %s", len(email_list), folder)
-            return email_list
-
         except HttpError as e:
             logger.exception("HTTP error retrieving emails")
             error_msg = f"Failed to retrieve emails: {e}"
@@ -291,6 +291,10 @@ class GmailClient(EmailClient):
             logger.exception("Unexpected error retrieving emails")
             error_msg = f"Failed to retrieve emails: {e}"
             raise EmailClientError(error_msg) from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Retrieved %d emails from %s", len(email_list), folder)
+            return email_list
 
     def delete_email(self: "GmailClient", email_id: str) -> bool:
         """Delete an email from Gmail.
@@ -317,9 +321,6 @@ class GmailClient(EmailClient):
                 userId="me",
                 id=email_id,
             ).execute()
-            logger.info("Email deleted successfully: %s", email_id)
-            return True
-
         except HttpError as e:
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for deletion: %s", email_id)
@@ -329,6 +330,10 @@ class GmailClient(EmailClient):
         except Exception as e:
             logger.exception("Unexpected error deleting email")
             raise EmailClientError(f"Failed to delete email: {e}") from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Email deleted successfully: %s", email_id)
+            return True
 
     def mark_as_read(self: "GmailClient", email_id: str) -> bool:
         """Mark an email as read in Gmail.
@@ -357,9 +362,6 @@ class GmailClient(EmailClient):
                 id=email_id,
                 body={"removeLabelIds": ["UNREAD"]},
             ).execute()
-            logger.info("Email marked as read: %s", email_id)
-            return True
-
         except HttpError as e:
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for marking as read: %s", email_id)
@@ -369,6 +371,10 @@ class GmailClient(EmailClient):
         except Exception as e:
             logger.exception("Unexpected error marking email as read")
             raise EmailClientError(f"Failed to mark email as read: {e}") from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Email marked as read: %s", email_id)
+            return True
 
     def search_messages(
         self: "GmailClient", query: str, folder: str = "INBOX"
@@ -431,8 +437,6 @@ class GmailClient(EmailClient):
                     )
                     continue
 
-            logger.info("Completed search for query '%s' in %s", query, folder)
-
         except HttpError as e:
             logger.exception("HTTP error searching emails")
             error_msg = f"Failed to search emails: {e}"
@@ -441,6 +445,9 @@ class GmailClient(EmailClient):
             logger.exception("Unexpected error searching emails")
             error_msg = f"Failed to search emails: {e}"
             raise EmailClientError(error_msg) from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Completed search for query '%s' in %s", query, folder)
 
     def get_folders(self: "GmailClient") -> list[str]:
         """Get available folders/labels.
@@ -465,9 +472,6 @@ class GmailClient(EmailClient):
 
             # Extract label names
             folder_list = [label["name"] for label in labels if label.get("name")]
-            logger.info("Retrieved %d folders/labels", len(folder_list))
-            return folder_list
-
         except HttpError as e:
             logger.exception("HTTP error retrieving folders")
             error_msg = f"Failed to retrieve folders: {e}"
@@ -476,6 +480,10 @@ class GmailClient(EmailClient):
             logger.exception("Unexpected error retrieving folders")
             error_msg = f"Failed to retrieve folders: {e}"
             raise EmailClientError(error_msg) from e
+        else:
+            # TRY300 fix - Move success logic to else block
+            logger.info("Retrieved %d folders/labels", len(folder_list))
+            return folder_list
 
     def _parse_gmail_message(
         self: "GmailClient", msg: dict[str, Any]

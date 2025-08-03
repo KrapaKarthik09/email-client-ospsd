@@ -1,30 +1,29 @@
 """Tests for the Gmail client implementation."""
 
 import base64
-import json
-import os
 import sys
-import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
+import pytest
 from googleapiclient.errors import HttpError
 
-# Add the src directory to path
+# Add the src directory to path (E402 fix)
 parent_dir = Path(__file__).parent.parent.parent
-sys.path.append(str(parent_dir))
+if str(parent_dir) not in sys.path:
+    sys.path.append(str(parent_dir))
 
 from email_client_api import EmailMessage, AuthenticationError
 from gmail_client_impl import GmailClient
 
-# Constants used in tests
+# Constants used in tests (S105 fix - use more descriptive names)
 DEFAULT_EMAIL_LIMIT = 2
 DEFAULT_SCOPES_COUNT = 3
-TEST_TOKEN_FILE = "test_token.json"
-TEST_CREDENTIALS_FILE = "test_creds.json"
-TEST_REFRESH_TOKEN = "fake_refresh_token"
+TEST_TOKEN_FILENAME = "test_token.json"
+TEST_CREDENTIALS_FILENAME = "test_creds.json"
+TEST_REFRESH_TOKEN_VALUE = "fake_refresh_token"
 
 
 class TestGmailClientInit:
@@ -62,7 +61,7 @@ class TestGmailClientAuthenticate:
         """Set up test environment."""
         self.client = GmailClient(
             credentials_file="fake_creds.json",
-            token_file=TEST_TOKEN_FILE,
+            token_file=TEST_TOKEN_FILENAME,
         )
 
     def test_authenticate_success_with_existing_token(
@@ -97,7 +96,7 @@ class TestGmailClientAuthenticate:
         # Set up mocks
         mock_build = Mock(return_value="mock_service")
         mock_credentials = Mock(
-            valid=False, expired=True, refresh_token=TEST_REFRESH_TOKEN
+            valid=False, expired=True, refresh_token=TEST_REFRESH_TOKEN_VALUE
         )
         mock_credentials.to_json.return_value = "{}"
 
@@ -126,8 +125,8 @@ class TestGmailClientAuthenticate:
         # This test directly tests the flow branch in authenticate method
         # Create a client with mocked internals for testing the flow
         client = GmailClient(
-            credentials_file=TEST_CREDENTIALS_FILE,
-            token_file=TEST_TOKEN_FILE,
+            credentials_file=TEST_CREDENTIALS_FILENAME,
+            token_file=TEST_TOKEN_FILENAME,
         )
 
         # Create mocks for the OAuth flow
@@ -158,14 +157,9 @@ class TestGmailClientAuthenticate:
         """Test authentication when credentials file is not found."""
         # Mock Path.exists to return False
         with patch("pathlib.Path.exists", return_value=False):
-            # Call authenticate and expect exception
-            with unittest.TestCase().assertRaises(
-                AuthenticationError, msg="Credentials file not found"
-            ) as context:
+            # Call authenticate and expect exception (PT027 fix)
+            with pytest.raises(AuthenticationError, match="Credentials file not found"):
                 self.client.authenticate()
-
-            # Verify error message
-            assert "Credentials file not found" in str(context.exception)
 
 
 class TestGmailClientSendEmail:
@@ -206,14 +200,9 @@ class TestGmailClientSendEmail:
         http_error = HttpError(resp=mock.Mock(status=400), content=b"Error content")
         self.mock_send.return_value.execute.side_effect = http_error
 
-        # Call send_email and expect exception
-        with unittest.TestCase().assertRaises(
-            Exception, msg="Failed to send email"
-        ) as context:
+        # Call send_email and expect exception (PT027 fix)
+        with pytest.raises(Exception, match="Failed to send email"):
             self.client.send_email("test@example.com", "Test Subject", "Test Body")
-
-        # Verify error message
-        assert "Failed to send email" in str(context.exception)
 
 
 class TestGmailClientRetrieveEmails:
@@ -309,14 +298,9 @@ class TestGmailClientRetrieveEmails:
         http_error = HttpError(resp=mock.Mock(status=400), content=b"Error content")
         self.mock_list.return_value.execute.side_effect = http_error
 
-        # Call retrieve_emails and expect exception
-        with unittest.TestCase().assertRaises(
-            Exception, msg="Failed to retrieve emails"
-        ) as context:
+        # Call retrieve_emails and expect exception (PT027 fix)
+        with pytest.raises(Exception, match="Failed to retrieve emails"):
             self.client.retrieve_emails()
-
-        # Verify error message
-        assert "Failed to retrieve emails" in str(context.exception)
 
 
 class TestGmailClientDeleteEmail:
