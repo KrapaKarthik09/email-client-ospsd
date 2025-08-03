@@ -44,9 +44,18 @@ SCOPES = [
 # HTTP status codes
 HTTP_NOT_FOUND = 404
 
+# Default file names
+DEFAULT_CREDENTIALS_FILE = "credentials.json"
+DEFAULT_TOKEN_FILE = "token.json"
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _raise_authentication_error(msg: str) -> None:
+    """Raise an authentication error with the given message."""
+    raise AuthenticationError(msg)
 
 
 class GmailClient(EmailClient):
@@ -58,8 +67,8 @@ class GmailClient(EmailClient):
 
     def __init__(
         self: "GmailClient",
-        credentials_file: str = "credentials.json",
-        token_file: str = "token.json",
+        credentials_file: str = DEFAULT_CREDENTIALS_FILE,
+        token_file: str = DEFAULT_TOKEN_FILE,
         scopes: Optional[list[str]] = None,
     ) -> None:
         """Initialize the Gmail client.
@@ -69,13 +78,13 @@ class GmailClient(EmailClient):
             credentials_file: Path to OAuth 2.0 credentials file
             token_file: Path to store/load access tokens
             scopes: List of Gmail API scopes (uses default if None)
+
         """
         self.credentials_file = credentials_file
         self.token_file = token_file
         self.scopes = scopes or SCOPES
         self.service: Any = None
         self.credentials: Optional[Credentials] = None
-
         logger.info("GmailClient initialized")
 
     def authenticate(self: "GmailClient") -> bool:
@@ -88,6 +97,7 @@ class GmailClient(EmailClient):
         Raises
         ------
             AuthenticationError: If authentication fails
+
         """
         try:
             creds = None
@@ -118,7 +128,7 @@ class GmailClient(EmailClient):
                         error_msg = (
                             f"Credentials file not found: {self.credentials_file}"
                         )
-                        raise AuthenticationError(error_msg)
+                        _raise_authentication_error(error_msg)
 
                     flow = InstalledAppFlow.from_client_secrets_file(
                         str(credentials_path),
@@ -127,13 +137,13 @@ class GmailClient(EmailClient):
                     creds = flow.run_local_server(port=8080)
                     logger.info("New credentials obtained")
 
-                # Save the credentials for the next run
-                try:
-                    with token_path.open("w", encoding="utf-8") as token:
-                        token.write(creds.to_json())
-                except (AttributeError, TypeError):
-                    # Skip token writing in test environment where creds is a Mock
-                    logger.debug("Skipping token writing in test environment")
+                    # Save the credentials for the next run
+                    try:
+                        with token_path.open("w", encoding="utf-8") as token:
+                            token.write(creds.to_json())
+                    except (AttributeError, TypeError):
+                        # Skip token writing in test environment where creds is a Mock
+                        logger.debug("Skipping token writing in test environment")
 
             # Set instance variables and build service
             self.credentials = creds
@@ -145,7 +155,7 @@ class GmailClient(EmailClient):
             # Re-raise authentication errors without wrapping
             raise
         except Exception as e:
-            logger.exception("Authentication failed: %s", e)
+            logger.exception("Authentication failed")
             raise AuthenticationError(f"Gmail authentication failed: {e}") from e
 
     def send_email(
@@ -167,6 +177,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If email sending fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -201,7 +212,7 @@ class GmailClient(EmailClient):
             return True
 
         except HttpError as e:
-            logger.error("HTTP error sending email: %s", e)
+            logger.exception("HTTP error sending email")
             raise EmailClientError(f"Failed to send email: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error sending email")
@@ -227,6 +238,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If email retrieval fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -264,7 +276,6 @@ class GmailClient(EmailClient):
                     email_obj = self._parse_gmail_message(msg)
                     if email_obj:
                         email_list.append(email_obj)
-
                 except Exception as e:
                     logger.warning("Failed to parse message %s: %s", message["id"], e)
                     continue
@@ -273,7 +284,7 @@ class GmailClient(EmailClient):
             return email_list
 
         except HttpError as e:
-            logger.error("HTTP error retrieving emails: %s", e)
+            logger.exception("HTTP error retrieving emails")
             error_msg = f"Failed to retrieve emails: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -296,6 +307,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If email deletion fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -305,7 +317,6 @@ class GmailClient(EmailClient):
                 userId="me",
                 id=email_id,
             ).execute()
-
             logger.info("Email deleted successfully: %s", email_id)
             return True
 
@@ -313,7 +324,7 @@ class GmailClient(EmailClient):
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for deletion: %s", email_id)
                 return False
-            logger.error("HTTP error deleting email: %s", e)
+            logger.exception("HTTP error deleting email")
             raise EmailClientError(f"Failed to delete email: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error deleting email")
@@ -334,6 +345,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If marking email as read fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -345,7 +357,6 @@ class GmailClient(EmailClient):
                 id=email_id,
                 body={"removeLabelIds": ["UNREAD"]},
             ).execute()
-
             logger.info("Email marked as read: %s", email_id)
             return True
 
@@ -353,7 +364,7 @@ class GmailClient(EmailClient):
             if e.resp.status == HTTP_NOT_FOUND:
                 logger.warning("Email not found for marking as read: %s", email_id)
                 return False
-            logger.error("HTTP error marking email as read: %s", e)
+            logger.exception("HTTP error marking email as read")
             raise EmailClientError(f"Failed to mark email as read: {e}") from e
         except Exception as e:
             logger.exception("Unexpected error marking email as read")
@@ -377,6 +388,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If search fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -413,7 +425,6 @@ class GmailClient(EmailClient):
                     email_obj = self._parse_gmail_message(msg)
                     if email_obj:
                         yield email_obj
-
                 except Exception as e:
                     logger.warning(
                         "Failed to parse search result %s: %s", message["id"], e
@@ -423,7 +434,7 @@ class GmailClient(EmailClient):
             logger.info("Completed search for query '%s' in %s", query, folder)
 
         except HttpError as e:
-            logger.error("HTTP error searching emails: %s", e)
+            logger.exception("HTTP error searching emails")
             error_msg = f"Failed to search emails: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -442,6 +453,7 @@ class GmailClient(EmailClient):
         ------
             AuthenticationError: If not authenticated
             EmailClientError: If folder retrieval fails
+
         """
         if not self.service:
             raise AuthenticationError("Not authenticated. Call authenticate() first.")
@@ -453,12 +465,11 @@ class GmailClient(EmailClient):
 
             # Extract label names
             folder_list = [label["name"] for label in labels if label.get("name")]
-
             logger.info("Retrieved %d folders/labels", len(folder_list))
             return folder_list
 
         except HttpError as e:
-            logger.error("HTTP error retrieving folders: %s", e)
+            logger.exception("HTTP error retrieving folders")
             error_msg = f"Failed to retrieve folders: {e}"
             raise EmailClientError(error_msg) from e
         except Exception as e:
@@ -478,6 +489,7 @@ class GmailClient(EmailClient):
         Returns:
         -------
             EmailMessage object or None if parsing fails
+
         """
         try:
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
@@ -535,6 +547,7 @@ class GmailClient(EmailClient):
         Returns:
         -------
             Extracted body text
+
         """
         try:
             # Handle multipart messages

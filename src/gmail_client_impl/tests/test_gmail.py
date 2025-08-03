@@ -22,6 +22,9 @@ from gmail_client_impl import GmailClient
 # Constants used in tests
 DEFAULT_EMAIL_LIMIT = 2
 DEFAULT_SCOPES_COUNT = 3
+TEST_TOKEN_FILE = "test_token.json"
+TEST_CREDENTIALS_FILE = "test_creds.json"
+TEST_REFRESH_TOKEN = "fake_refresh_token"
 
 
 class TestGmailClientInit:
@@ -45,6 +48,7 @@ class TestGmailClientInit:
             token_file="custom_token.json",
             scopes=test_scopes,
         )
+
         assert client.credentials_file == "custom_creds.json"
         assert client.token_file == "custom_token.json"
         assert client.scopes == test_scopes
@@ -58,7 +62,7 @@ class TestGmailClientAuthenticate:
         """Set up test environment."""
         self.client = GmailClient(
             credentials_file="fake_creds.json",
-            token_file="fake_token.json",
+            token_file=TEST_TOKEN_FILE,
         )
 
     def test_authenticate_success_with_existing_token(
@@ -76,7 +80,6 @@ class TestGmailClientAuthenticate:
             "gmail_client_impl.Credentials.from_authorized_user_file",
             return_value=mock_credentials,
         ):
-
             # Call authenticate
             result = self.client.authenticate()
 
@@ -94,7 +97,7 @@ class TestGmailClientAuthenticate:
         # Set up mocks
         mock_build = Mock(return_value="mock_service")
         mock_credentials = Mock(
-            valid=False, expired=True, refresh_token="fake_refresh_token"
+            valid=False, expired=True, refresh_token=TEST_REFRESH_TOKEN
         )
         mock_credentials.to_json.return_value = "{}"
 
@@ -107,7 +110,6 @@ class TestGmailClientAuthenticate:
         ), patch(
             "pathlib.Path.open", mock.mock_open()
         ):
-
             # Call authenticate
             result = self.client.authenticate()
 
@@ -122,11 +124,10 @@ class TestGmailClientAuthenticate:
     def test_authenticate_oauth_flow(self: "TestGmailClientAuthenticate") -> None:
         """Test OAuth flow for authentication."""
         # This test directly tests the flow branch in authenticate method
-
         # Create a client with mocked internals for testing the flow
         client = GmailClient(
-            credentials_file="test_creds.json",
-            token_file="test_token.json",
+            credentials_file=TEST_CREDENTIALS_FILE,
+            token_file=TEST_TOKEN_FILE,
         )
 
         # Create mocks for the OAuth flow
@@ -143,7 +144,6 @@ class TestGmailClientAuthenticate:
         ), patch("gmail_client_impl.Path.open", mock.mock_open()), patch(
             "gmail_client_impl.build", return_value=mock_service
         ):
-
             # Call authenticate
             result = client.authenticate()
 
@@ -159,7 +159,9 @@ class TestGmailClientAuthenticate:
         # Mock Path.exists to return False
         with patch("pathlib.Path.exists", return_value=False):
             # Call authenticate and expect exception
-            with unittest.TestCase().assertRaises(Exception) as context:
+            with unittest.TestCase().assertRaises(
+                AuthenticationError, msg="Credentials file not found"
+            ) as context:
                 self.client.authenticate()
 
             # Verify error message
@@ -205,7 +207,9 @@ class TestGmailClientSendEmail:
         self.mock_send.return_value.execute.side_effect = http_error
 
         # Call send_email and expect exception
-        with unittest.TestCase().assertRaises(Exception) as context:
+        with unittest.TestCase().assertRaises(
+            Exception, msg="Failed to send email"
+        ) as context:
             self.client.send_email("test@example.com", "Test Subject", "Test Body")
 
         # Verify error message
@@ -269,8 +273,14 @@ class TestGmailClientRetrieveEmails:
 
         # Configure mock responses
         self.mock_list.return_value.execute.return_value = self.message_list_response
-        self.mock_get.side_effect = lambda userId, id, **kwargs: Mock(
-            execute=Mock(return_value=self.message1 if id == "msg1" else self.message2)
+        self.mock_get.side_effect = (
+            lambda userId, message_id, **kwargs: Mock(  # noqa: N803, ARG005
+                execute=Mock(
+                    return_value=self.message1
+                    if message_id == "msg1"
+                    else self.message2
+                )
+            )
         )
 
     def test_retrieve_emails_success(self: "TestGmailClientRetrieveEmails") -> None:
@@ -300,7 +310,9 @@ class TestGmailClientRetrieveEmails:
         self.mock_list.return_value.execute.side_effect = http_error
 
         # Call retrieve_emails and expect exception
-        with unittest.TestCase().assertRaises(Exception) as context:
+        with unittest.TestCase().assertRaises(
+            Exception, msg="Failed to retrieve emails"
+        ) as context:
             self.client.retrieve_emails()
 
         # Verify error message
@@ -400,12 +412,11 @@ class TestGmailClientMessageParsing:
         """Set up test environment."""
         self.client = GmailClient()
 
-    # Public helper method to access the private method for testing
     def parse_message_for_testing(
         self: "TestGmailClientMessageParsing", msg: dict[str, Any]
     ) -> EmailMessage:
-        """Helper to access the private parse method for testing."""
-        result = self.client._parse_gmail_message(msg)
+        """Access the private parse method for testing."""
+        result = self.client._parse_gmail_message(msg)  # noqa: SLF001
         assert result is not None
         return result
 
@@ -463,9 +474,7 @@ class TestGmailClientMessageParsing:
                     {
                         "mimeType": "text/html",
                         "body": {
-                            "data": base64.b64encode(b"<html>HTML part</html>").decode(
-                                "utf-8"
-                            )
+                            "data": base64.b64encode(b"HTML part").decode("utf-8")
                         },
                     },
                 ],

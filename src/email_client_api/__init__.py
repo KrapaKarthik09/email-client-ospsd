@@ -47,6 +47,7 @@ class Attachment:
             content_type: MIME type of the attachment
             size: Size of the attachment in bytes
             content: The actual content of the attachment if loaded
+
         """
         self.attachment_id = attachment_id
         self.filename = filename
@@ -64,6 +65,7 @@ class Attachment:
         Raises
         ------
             EmailClientError: If content cannot be retrieved
+
         """
         if self._content:
             return self._content
@@ -81,7 +83,8 @@ class EmailMessage:
         recipient: str,
         body: str,
         timestamp: str,
-        is_read: bool = False,  # FBT001/FBT002 can't be easily fixed here as it's part of the API
+        *,  # Force keyword-only arguments to fix FBT001/FBT002
+        is_read: bool = False,
         folder: str = "INBOX",
         attachments: Optional[list[dict[str, Any]]] = None,
     ) -> None:
@@ -98,6 +101,7 @@ class EmailMessage:
             is_read: Whether the email has been read
             folder: Folder location of the email
             attachments: List of attachment metadata
+
         """
         self.id = message_id  # Keep 'id' as attribute name for backward compatibility
         self.subject = subject
@@ -108,6 +112,7 @@ class EmailMessage:
         self.is_read = is_read
         self.folder = folder
         self.attachments = attachments or []
+
         # Add aliases to match README API
         self.from_ = sender
 
@@ -117,6 +122,7 @@ class EmailMessage:
         Returns
         -------
             Dict containing email data
+
         """
         return {
             "id": self.id,
@@ -160,6 +166,7 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If email sending fails for other reasons
+
         """
 
     @abstractmethod
@@ -183,6 +190,7 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If email retrieval fails for other reasons
+
         """
 
     @abstractmethod
@@ -201,6 +209,7 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If email deletion fails for other reasons
+
         """
 
     @abstractmethod
@@ -219,6 +228,7 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If marking email as read fails for other reasons
+
         """
 
     @abstractmethod
@@ -232,6 +242,7 @@ class EmailClient(ABC):
         Raises
         ------
             AuthenticationError: If authentication fails
+
         """
 
     # Additional methods from README
@@ -253,10 +264,10 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If email retrieval fails
+
         """
         emails = self.retrieve_emails(folder=folder, limit=limit)
-        for email in emails:
-            yield email
+        yield from emails
 
     @abstractmethod
     def search_messages(
@@ -277,6 +288,7 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If search fails
+
         """
 
     @abstractmethod
@@ -291,10 +303,11 @@ class EmailClient(ABC):
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If folder retrieval fails
+
         """
 
 
-def get_client(provider: str = "gmail", **kwargs: Any) -> EmailClient:
+def get_client(provider: str = "gmail", **kwargs: str) -> EmailClient:  # Fixed ANN401
     """Get an email client implementation.
 
     Args:
@@ -309,11 +322,11 @@ def get_client(provider: str = "gmail", **kwargs: Any) -> EmailClient:
     Raises:
     ------
         ValueError: If the provider is not supported
+
     """
     if provider.lower() == "gmail":
         # Import here to avoid circular imports
         from gmail_client_impl import GmailClient
 
         return GmailClient(**kwargs)
-
     raise ValueError(f"Email provider '{provider}' is not supported")
