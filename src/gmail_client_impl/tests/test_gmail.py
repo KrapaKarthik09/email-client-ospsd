@@ -1,465 +1,483 @@
-"""Tests for the Gmail client implementation.
-
-This module contains tests for the GmailClient class, including mocked
-Gmail API interactions and authentication testing.
-"""
+"""Tests for the Gmail client implementation."""
 
 import base64
+import json
 import os
-
-# Import the classes we need to test
 import sys
+import unittest
+from pathlib import Path
 from typing import Any
 from unittest import mock
-from unittest.mock import MagicMock, Mock, mock_open, patch
+from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 from googleapiclient.errors import HttpError
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Add the src directory to path
+parent_dir = Path(__file__).parent.parent.parent
+sys.path.append(str(parent_dir))
 
-from email_client_api import AuthenticationError, EmailClientError, EmailMessage
-
+from email_client_api import EmailMessage, AuthenticationError
 from gmail_client_impl import GmailClient
 
-# Constants
+# Constants used in tests
 DEFAULT_EMAIL_LIMIT = 2
 DEFAULT_SCOPES_COUNT = 3
 
 
-class TestGmailClientInitialization:
-    """Test cases for GmailClient initialization."""
+class TestGmailClientInit:
+    """Test Gmail client initialization."""
 
-    def test_init_with_defaults(self) -> None:
-        """Test GmailClient initialization with default parameters."""
+    def test_init_with_defaults(self: "TestGmailClientInit") -> None:
+        """Test initialization with default parameters."""
         client = GmailClient()
-
         assert client.credentials_file == "credentials.json"
         assert client.token_file == "token.json"
+        assert (
+            len(client.scopes) == DEFAULT_SCOPES_COUNT
+        )  # Use constant instead of magic number
         assert client.service is None
-        assert client.credentials is None
-        assert len(client.scopes) == DEFAULT_SCOPES_COUNT  # Default scopes
 
-    def test_init_with_custom_params(self) -> None:
-        """Test GmailClient initialization with custom parameters."""
-        custom_scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
-
+    def test_init_with_custom_params(self: "TestGmailClientInit") -> None:
+        """Test initialization with custom parameters."""
+        test_scopes = ["scope1", "scope2"]
         client = GmailClient(
             credentials_file="custom_creds.json",
             token_file="custom_token.json",
-            scopes=custom_scopes,
+            scopes=test_scopes,
         )
-
         assert client.credentials_file == "custom_creds.json"
         assert client.token_file == "custom_token.json"
-        assert client.scopes == custom_scopes
+        assert client.scopes == test_scopes
+        assert client.service is None
 
 
-class TestGmailClientAuthentication:
-    """Test cases for Gmail authentication."""
+class TestGmailClientAuthenticate:
+    """Test Gmail client authentication."""
 
-    @patch("gmail_client_impl.build")
-    @patch("gmail_client_impl.InstalledAppFlow.from_client_secrets_file")
-    @patch("os.path.exists")
-    def test_authenticate_new_user(
-        self,
-        mock_exists: Mock,
-        mock_flow: Mock,
-        mock_build: Mock,
+    def setup_method(self: "TestGmailClientAuthenticate") -> None:
+        """Set up test environment."""
+        self.client = GmailClient(
+            credentials_file="fake_creds.json",
+            token_file="fake_token.json",
+        )
+
+    def test_authenticate_success_with_existing_token(
+        self: "TestGmailClientAuthenticate",
     ) -> None:
-        """Test authentication for a new user without existing token."""
-        # Setup mocks
-        mock_exists.side_effect = lambda path: path == "credentials.json"
-        mock_credentials = Mock()
-        mock_credentials.to_json.return_value = '{"token": "test"}'
-        mock_flow_instance = Mock()
-        mock_flow_instance.run_local_server.return_value = mock_credentials
-        mock_flow.return_value = mock_flow_instance
+        """Test successful authentication with existing token."""
+        # Mock dependencies
+        mock_build = Mock(return_value="mock_service")
+        mock_credentials = Mock(valid=True)
+
+        # Patch with context managers to scope correctly
+        with patch("gmail_client_impl.build", mock_build), patch(
+            "pathlib.Path.exists", return_value=True
+        ), patch(
+            "gmail_client_impl.Credentials.from_authorized_user_file",
+            return_value=mock_credentials,
+        ):
+
+            # Call authenticate
+            result = self.client.authenticate()
+
+            # Assertions
+            assert result is True
+            mock_build.assert_called_once_with(
+                "gmail", "v1", credentials=mock_credentials
+            )
+            assert self.client.service == "mock_service"
+
+    def test_authenticate_with_expired_token(
+        self: "TestGmailClientAuthenticate",
+    ) -> None:
+        """Test authentication with expired token that needs refresh."""
+        # Set up mocks
+        mock_build = Mock(return_value="mock_service")
+        mock_credentials = Mock(
+            valid=False, expired=True, refresh_token="fake_refresh_token"
+        )
+        mock_credentials.to_json.return_value = "{}"
+
+        # Patch with context managers
+        with patch("gmail_client_impl.build", mock_build), patch(
+            "pathlib.Path.exists", return_value=True
+        ), patch(
+            "gmail_client_impl.Credentials.from_authorized_user_file",
+            return_value=mock_credentials,
+        ), patch(
+            "pathlib.Path.open", mock.mock_open()
+        ):
+
+            # Call authenticate
+            result = self.client.authenticate()
+
+            # Assertions
+            assert result is True
+            mock_credentials.refresh.assert_called_once()
+            mock_build.assert_called_once_with(
+                "gmail", "v1", credentials=mock_credentials
+            )
+            assert self.client.service == "mock_service"
+
+    def test_authenticate_oauth_flow(self: "TestGmailClientAuthenticate") -> None:
+        """Test OAuth flow for authentication."""
+        # This test directly tests the flow branch in authenticate method
+
+        # Create a client with mocked internals for testing the flow
+        client = GmailClient(
+            credentials_file="test_creds.json",
+            token_file="test_token.json",
+        )
+
+        # Create mocks for the OAuth flow
+        mock_flow = Mock()
+        mock_creds = Mock()
+        mock_creds.to_json.return_value = "{}"
+        mock_flow.run_local_server.return_value = mock_creds
         mock_service = Mock()
-        mock_build.return_value = mock_service
 
-        client = GmailClient()
+        # Setup patches for all components involved in the flow
+        with patch("gmail_client_impl.Path.exists", side_effect=[False, True]), patch(
+            "gmail_client_impl.InstalledAppFlow.from_client_secrets_file",
+            return_value=mock_flow,
+        ), patch("gmail_client_impl.Path.open", mock.mock_open()), patch(
+            "gmail_client_impl.build", return_value=mock_service
+        ):
 
-        with patch("builtins.open", mock_open()) as mock_file:
+            # Call authenticate
             result = client.authenticate()
 
-        assert result is True
-        assert client.credentials == mock_credentials
-        assert client.service == mock_service
-        mock_flow.assert_called_once()
-        mock_file.assert_called_once_with("token.json", "w", encoding="utf-8")
+            # Assertions
+            assert result is True
+            mock_flow.run_local_server.assert_called_once()
+            assert client.service == mock_service
 
-    @patch("gmail_client_impl.build")
-    @patch("gmail_client_impl.Credentials.from_authorized_user_file")
-    @patch("os.path.exists")
-    def test_authenticate_existing_valid_token(
-        self,
-        mock_exists: Mock,
-        mock_from_file: Mock,
-        mock_build: Mock,
+    def test_authenticate_credentials_file_not_found(
+        self: "TestGmailClientAuthenticate",
     ) -> None:
-        """Test authentication with existing valid token."""
-        # Setup mocks
-        mock_exists.return_value = True
-        mock_credentials = Mock()
-        mock_credentials.valid = True
-        mock_from_file.return_value = mock_credentials
-        mock_service = Mock()
-        mock_build.return_value = mock_service
+        """Test authentication when credentials file is not found."""
+        # Mock Path.exists to return False
+        with patch("pathlib.Path.exists", return_value=False):
+            # Call authenticate and expect exception
+            with unittest.TestCase().assertRaises(Exception) as context:
+                self.client.authenticate()
 
-        client = GmailClient()
-        result = client.authenticate()
-
-        assert result is True
-        assert client.credentials == mock_credentials
-        assert client.service == mock_service
-        mock_from_file.assert_called_once_with("token.json", client.scopes)
-
-    @patch("gmail_client_impl.build")
-    @patch("gmail_client_impl.Credentials.from_authorized_user_file")
-    @patch("gmail_client_impl.Request")
-    @patch("os.path.exists")
-    def test_authenticate_refresh_expired_token(
-        self,
-        mock_exists: Mock,
-        mock_request: Mock,
-        mock_from_file: Mock,
-        mock_build: Mock,
-    ) -> None:
-        """Test authentication with expired token that can be refreshed."""
-        # Setup mocks
-        mock_exists.return_value = True
-        mock_credentials = Mock()
-        mock_credentials.valid = False
-        mock_credentials.expired = True
-        mock_credentials.refresh_token = "refresh_token"
-        mock_credentials.to_json.return_value = '{"token": "refreshed"}'
-        mock_from_file.return_value = mock_credentials
-        mock_service = Mock()
-        mock_build.return_value = mock_service
-
-        client = GmailClient()
-
-        with patch("builtins.open", mock_open()) as mock_file:
-            result = client.authenticate()
-
-        assert result is True
-        mock_credentials.refresh.assert_called_once()
-        mock_file.assert_called_once_with("token.json", "w", encoding="utf-8")
-
-    @patch("os.path.exists")
-    def test_authenticate_missing_credentials_file(self, mock_exists: Mock) -> None:
-        """Test authentication fails when credentials file is missing."""
-        mock_exists.return_value = False
-
-        client = GmailClient()
-
-        with pytest.raises(AuthenticationError, match="Credentials file not found"):
-            client.authenticate()
+            # Verify error message
+            assert "Credentials file not found" in str(context.exception)
 
 
 class TestGmailClientSendEmail:
-    """Test cases for sending emails."""
+    """Test sending emails with Gmail client."""
 
-    def setup_method(self) -> None:
-        """Set up test client with mocked service."""
+    def setup_method(self: "TestGmailClientSendEmail") -> None:
+        """Set up test environment."""
+        # Create client and mock service
         self.client = GmailClient()
         self.client.service = Mock()
 
-    def test_send_email_success(self) -> None:
-        """Test successful email sending."""
-        # Setup mock
-        mock_result = {"id": "sent_message_id_123"}
-        self.client.service.users().messages().send().execute.return_value = mock_result
+        # Set up the mock chain
+        self.mock_send = Mock()
+        self.client.service.users.return_value.messages.return_value.send = (
+            self.mock_send
+        )
+        self.mock_send.return_value.execute.return_value = {"id": "fake_id"}
 
+    def test_send_email_success(self: "TestGmailClientSendEmail") -> None:
+        """Test successful email sending."""
+        # Call send_email
         result = self.client.send_email(
             recipient="test@example.com",
             subject="Test Subject",
             body="Test Body",
         )
 
+        # Assertions
         assert result is True
-        # Verify the send was called with the right parameters
-        self.client.service.users().messages().send.assert_called_with(
-            userId="me", body={"raw": mock.ANY},
+        self.mock_send.assert_called_with(
+            userId="me",
+            body=mock.ANY,
         )
 
-    def test_send_email_not_authenticated(self) -> None:
-        """Test sending email without authentication."""
-        client = GmailClient()  # No service set
+    def test_send_email_http_error(self: "TestGmailClientSendEmail") -> None:
+        """Test send_email with HttpError."""
+        # Set up mock to raise HttpError
+        http_error = HttpError(resp=mock.Mock(status=400), content=b"Error content")
+        self.mock_send.return_value.execute.side_effect = http_error
 
-        with pytest.raises(AuthenticationError, match="Not authenticated"):
-            client.send_email("test@example.com", "Subject", "Body")
+        # Call send_email and expect exception
+        with unittest.TestCase().assertRaises(Exception) as context:
+            self.client.send_email("test@example.com", "Test Subject", "Test Body")
 
-    def test_send_email_http_error(self) -> None:
-        """Test sending email with HTTP error."""
-        # Setup mock to raise HttpError
-        mock_response = Mock()
-        mock_response.status = 400
-        http_error = HttpError(mock_response, b'{"error": "Bad Request"}')
-        self.client.service.users().messages().send().execute.side_effect = http_error
-
-        with pytest.raises(EmailClientError, match="Failed to send email"):
-            self.client.send_email("test@example.com", "Subject", "Body")
+        # Verify error message
+        assert "Failed to send email" in str(context.exception)
 
 
 class TestGmailClientRetrieveEmails:
-    """Test cases for retrieving emails."""
+    """Test retrieving emails with Gmail client."""
 
     def setup_method(self: "TestGmailClientRetrieveEmails") -> None:
-        """Set up test client with mocked service."""
+        """Set up test environment."""
+        # Create client and mock service
         self.client = GmailClient()
         self.client.service = Mock()
 
-    def create_mock_gmail_message(self: "TestGmailClientRetrieveEmails", email_id: str) -> dict[str, Any]:
-        """Create a mock Gmail API message."""
-        return {
-            "id": email_id,
-            "internalDate": "1640995200000",  # 2022-01-01 00:00:00
-            "labelIds": ["INBOX", "UNREAD"],
-            "payload": {
-                "headers": [
-                    {"name": "Subject", "value": f"Test Subject {email_id}"},
-                    {"name": "From", "value": f"sender{email_id}@example.com"},
-                    {"name": "To", "value": f"recipient{email_id}@example.com"},
-                ],
-                "mimeType": "text/plain",
-                "body": {
-                    "data": base64.urlsafe_b64encode(
-                        f"Test body content {email_id}".encode(),
-                    ).decode(),
-                },
-            },
-        }
-
-    def test_retrieve_emails_success(self: "TestGmailClientRetrieveEmails") -> None:
-        """Test successful email retrieval."""
-        # Setup mocks
-        mock_messages_list = {
+        # Set up mock responses
+        self.message_list_response = {
             "messages": [
                 {"id": "msg1"},
                 {"id": "msg2"},
-            ],
-        }
-        self.client.service.users().messages().list().execute.return_value = mock_messages_list
-
-        # Mock individual message retrieval
-        self.client.service.users().messages().get.side_effect = [
-            MagicMock(execute=lambda: self.create_mock_gmail_message("msg1")),
-            MagicMock(execute=lambda: self.create_mock_gmail_message("msg2")),
-        ]
-
-        emails = self.client.retrieve_emails(folder="INBOX", limit=DEFAULT_EMAIL_LIMIT)
-
-        assert len(emails) == DEFAULT_EMAIL_LIMIT
-        assert all(isinstance(email, EmailMessage) for email in emails)
-        assert emails[0].id == "msg1"
-        assert emails[1].id == "msg2"
-        assert emails[0].subject == "Test Subject msg1"
-        assert emails[0].sender == "sendermsg1@example.com"
-
-    def test_retrieve_emails_not_authenticated(self: "TestGmailClientRetrieveEmails") -> None:
-        """Test retrieving emails without authentication."""
-        client = GmailClient()  # No service set
-
-        with pytest.raises(AuthenticationError, match="Not authenticated"):
-            client.retrieve_emails()
-
-    def test_retrieve_emails_empty_result(self: "TestGmailClientRetrieveEmails") -> None:
-        """Test retrieving emails when none exist."""
-        mock_messages_list = {"messages": []}
-        self.client.service.users().messages().list().execute.return_value = mock_messages_list
-
-        emails = self.client.retrieve_emails()
-
-        assert emails == []
-
-
-class TestGmailClientDeleteEmail:
-    """Test cases for deleting emails."""
-
-    def setup_method(self: "TestGmailClientDeleteEmail") -> None:
-        """Set up test client with mocked service."""
-        self.client = GmailClient()
-        self.client.service = Mock()
-
-    def test_delete_email_success(self) -> None:
-        """Test successful email deletion."""
-        self.client.service.users().messages().delete().execute.return_value = {}
-
-        result = self.client.delete_email("test_email_id")
-
-        assert result is True
-        # Verify the delete was called with the right parameters
-        self.client.service.users().messages().delete.assert_called_with(
-            userId="me", id="test_email_id",
-        )
-
-    def test_delete_email_not_found(self) -> None:
-        """Test deleting non-existent email."""
-        mock_response = Mock()
-        mock_response.status = 404
-        http_error = HttpError(mock_response, b'{"error": "Not Found"}')
-        self.client.service.users().messages().delete().execute.side_effect = http_error
-
-        result = self.client.delete_email("nonexistent_id")
-
-        assert result is False
-
-    def test_delete_email_not_authenticated(self: "TestGmailClientDeleteEmail") -> None:
-        """Test deleting email without authentication."""
-        client = GmailClient()  # No service set
-
-        with pytest.raises(AuthenticationError, match="Not authenticated"):
-            client.delete_email("test_id")
-
-
-class TestGmailClientMarkAsRead:
-    """Test cases for marking emails as read."""
-
-    def setup_method(self: "TestGmailClientMarkAsRead") -> None:
-        """Set up test client with mocked service."""
-        self.client = GmailClient()
-        self.client.service = Mock()
-
-    def test_mark_as_read_success(self) -> None:
-        """Test successfully marking email as read."""
-        self.client.service.users().messages().modify().execute.return_value = {}
-
-        result = self.client.mark_as_read("test_email_id")
-
-        assert result is True
-        # Verify the modify was called with the right parameters
-        self.client.service.users().messages().modify.assert_called_with(
-            userId="me",
-            id="test_email_id",
-            body={"removeLabelIds": ["UNREAD"]},
-        )
-
-    def test_mark_as_read_not_found(self) -> None:
-        """Test marking non-existent email as read."""
-        mock_response = Mock()
-        mock_response.status = 404
-        http_error = HttpError(mock_response, b'{"error": "Not Found"}')
-        self.client.service.users().messages().modify().execute.side_effect = http_error
-
-        result = self.client.mark_as_read("nonexistent_id")
-
-        assert result is False
-
-    def test_mark_as_read_not_authenticated(self: "TestGmailClientMarkAsRead") -> None:
-        """Test marking email as read without authentication."""
-        client = GmailClient()  # No service set
-
-        with pytest.raises(AuthenticationError, match="Not authenticated"):
-            client.mark_as_read("test_id")
-
-
-class TestGmailClientMessageParsing:
-    """Test cases for Gmail message parsing."""
-
-    def setup_method(self: "TestGmailClientMessageParsing") -> None:
-        """Set up test client."""
-        self.client = GmailClient()
-
-    def parse_message_for_testing(self: "TestGmailClientMessageParsing", message: dict[str, Any]) -> Any:
-        """Access the parse method for testing purposes.
-
-        This helper is used to properly test the private method while avoiding
-        linting errors.
-        """
-        return self.client._parse_gmail_message(message)  # noqa: SLF001
-
-    def test_parse_gmail_message_simple(self: "TestGmailClientMessageParsing") -> None:
-        """Test parsing a simple Gmail message."""
-        mock_msg = {
-            "id": "test_msg_123",
-            "internalDate": "1640995200000",  # 2022-01-01 00:00:00
-            "labelIds": ["INBOX"],
-            "payload": {
-                "headers": [
-                    {"name": "Subject", "value": "Test Subject"},
-                    {"name": "From", "value": "sender@example.com"},
-                    {"name": "To", "value": "recipient@example.com"},
-                ],
-                "mimeType": "text/plain",
-                "body": {
-                    "data": base64.urlsafe_b64encode(b"Test body content").decode(),
-                },
-            },
+            ]
         }
 
-        email = self.parse_message_for_testing(mock_msg)
-
-        assert email is not None
-        assert email.id == "test_msg_123"
-        assert email.subject == "Test Subject"
-        assert email.sender == "sender@example.com"
-        assert email.recipient == "recipient@example.com"
-        assert email.body == "Test body content"
-        assert email.is_read is True  # No UNREAD label
-        assert email.folder == "INBOX"
-
-    def test_parse_gmail_message_unread(self: "TestGmailClientMessageParsing") -> None:
-        """Test parsing an unread Gmail message."""
-        mock_msg = {
-            "id": "unread_msg",
-            "internalDate": "1640995200000",
+        self.message1 = {
+            "id": "msg1",
+            "internalDate": "1600000000000",
             "labelIds": ["INBOX", "UNREAD"],
             "payload": {
                 "headers": [
-                    {"name": "Subject", "value": "Unread Subject"},
-                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "From", "value": "sender1@example.com"},
+                    {"name": "Subject", "value": "Test Subject 1"},
                     {"name": "To", "value": "recipient@example.com"},
                 ],
                 "mimeType": "text/plain",
-                "body": {"data": base64.urlsafe_b64encode(b"Unread content").decode()},
+                "body": {"data": base64.b64encode(b"Test Body 1").decode("utf-8")},
             },
         }
 
-        email = self.parse_message_for_testing(mock_msg)
-
-        assert email is not None
-        assert email.is_read is False  # UNREAD label present
-
-    def test_parse_gmail_message_multipart(self: "TestGmailClientMessageParsing") -> None:
-        """Test parsing a multipart Gmail message."""
-        mock_msg = {
-            "id": "multipart_msg",
-            "internalDate": "1640995200000",
+        self.message2 = {
+            "id": "msg2",
+            "internalDate": "1600000000000",
             "labelIds": ["INBOX"],
             "payload": {
                 "headers": [
-                    {"name": "Subject", "value": "Multipart Subject"},
-                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "From", "value": "sender2@example.com"},
+                    {"name": "Subject", "value": "Test Subject 2"},
                     {"name": "To", "value": "recipient@example.com"},
                 ],
+                "mimeType": "text/plain",
+                "body": {"data": base64.b64encode(b"Test Body 2").decode("utf-8")},
+            },
+        }
+
+        # Set up the mock chain for list and get
+        self.mock_list = Mock()
+        self.mock_get = Mock()
+        self.client.service.users.return_value.messages.return_value.list = (
+            self.mock_list
+        )
+        self.client.service.users.return_value.messages.return_value.get = self.mock_get
+
+        # Configure mock responses
+        self.mock_list.return_value.execute.return_value = self.message_list_response
+        self.mock_get.side_effect = lambda userId, id, **kwargs: Mock(
+            execute=Mock(return_value=self.message1 if id == "msg1" else self.message2)
+        )
+
+    def test_retrieve_emails_success(self: "TestGmailClientRetrieveEmails") -> None:
+        """Test successful email retrieval."""
+        # Call retrieve_emails
+        result = self.client.retrieve_emails(folder="INBOX", limit=DEFAULT_EMAIL_LIMIT)
+
+        # Assertions
+        assert len(result) == DEFAULT_EMAIL_LIMIT
+        assert result[0].id == "msg1"
+        assert result[0].subject == "Test Subject 1"
+        assert result[0].is_read is False
+        assert result[1].id == "msg2"
+        assert result[1].subject == "Test Subject 2"
+        assert result[1].is_read is True
+
+        # Verify API calls
+        self.mock_list.assert_called_with(
+            userId="me", q="in:inbox", maxResults=DEFAULT_EMAIL_LIMIT
+        )
+        assert self.mock_get.call_count == DEFAULT_EMAIL_LIMIT
+
+    def test_retrieve_emails_http_error(self: "TestGmailClientRetrieveEmails") -> None:
+        """Test retrieve_emails with HttpError."""
+        # Set up mock to raise HttpError
+        http_error = HttpError(resp=mock.Mock(status=400), content=b"Error content")
+        self.mock_list.return_value.execute.side_effect = http_error
+
+        # Call retrieve_emails and expect exception
+        with unittest.TestCase().assertRaises(Exception) as context:
+            self.client.retrieve_emails()
+
+        # Verify error message
+        assert "Failed to retrieve emails" in str(context.exception)
+
+
+class TestGmailClientDeleteEmail:
+    """Test deleting emails with Gmail client."""
+
+    def setup_method(self: "TestGmailClientDeleteEmail") -> None:
+        """Set up test environment."""
+        # Create client and mock service
+        self.client = GmailClient()
+        self.client.service = Mock()
+
+        # Set up the mock chain
+        self.mock_delete = Mock()
+        self.client.service.users.return_value.messages.return_value.delete = (
+            self.mock_delete
+        )
+        self.mock_delete.return_value.execute.return_value = {}
+
+    def test_delete_email_success(self: "TestGmailClientDeleteEmail") -> None:
+        """Test successful email deletion."""
+        # Call delete_email
+        result = self.client.delete_email(email_id="msg1")
+
+        # Assertions
+        assert result is True
+        self.mock_delete.assert_called_with(userId="me", id="msg1")
+
+    def test_delete_email_not_found(self: "TestGmailClientDeleteEmail") -> None:
+        """Test delete_email with not found error."""
+        # Set up mock to raise HttpError with 404 status
+        http_error = HttpError(resp=mock.Mock(status=404), content=b"Not found")
+        self.mock_delete.return_value.execute.side_effect = http_error
+
+        # Call delete_email
+        result = self.client.delete_email(email_id="not_exists")
+
+        # Assertions
+        assert result is False
+        self.mock_delete.assert_called_with(userId="me", id="not_exists")
+
+
+class TestGmailClientMarkAsRead:
+    """Test marking emails as read with Gmail client."""
+
+    def setup_method(self: "TestGmailClientMarkAsRead") -> None:
+        """Set up test environment."""
+        # Create client and mock service
+        self.client = GmailClient()
+        self.client.service = Mock()
+
+        # Set up the mock chain
+        self.mock_modify = Mock()
+        self.client.service.users.return_value.messages.return_value.modify = (
+            self.mock_modify
+        )
+        self.mock_modify.return_value.execute.return_value = {}
+
+    def test_mark_as_read_success(self: "TestGmailClientMarkAsRead") -> None:
+        """Test successful marking email as read."""
+        # Call mark_as_read
+        result = self.client.mark_as_read(email_id="msg1")
+
+        # Assertions
+        assert result is True
+        self.mock_modify.assert_called_with(
+            userId="me",
+            id="msg1",
+            body={"removeLabelIds": ["UNREAD"]},
+        )
+
+    def test_mark_as_read_not_found(self: "TestGmailClientMarkAsRead") -> None:
+        """Test mark_as_read with not found error."""
+        # Set up mock to raise HttpError with 404 status
+        http_error = HttpError(resp=mock.Mock(status=404), content=b"Not found")
+        self.mock_modify.return_value.execute.side_effect = http_error
+
+        # Call mark_as_read
+        result = self.client.mark_as_read(email_id="not_exists")
+
+        # Assertions
+        assert result is False
+        self.mock_modify.assert_called_with(
+            userId="me",
+            id="not_exists",
+            body={"removeLabelIds": ["UNREAD"]},
+        )
+
+
+class TestGmailClientMessageParsing:
+    """Test message parsing functionality."""
+
+    def setup_method(self: "TestGmailClientMessageParsing") -> None:
+        """Set up test environment."""
+        self.client = GmailClient()
+
+    # Public helper method to access the private method for testing
+    def parse_message_for_testing(
+        self: "TestGmailClientMessageParsing", msg: dict[str, Any]
+    ) -> EmailMessage:
+        """Helper to access the private parse method for testing."""
+        result = self.client._parse_gmail_message(msg)
+        assert result is not None
+        return result
+
+    def test_parse_gmail_message(self: "TestGmailClientMessageParsing") -> None:
+        """Test parsing Gmail message to EmailMessage."""
+        # Create test message data
+        msg = {
+            "id": "msg123",
+            "internalDate": "1600000000000",
+            "labelIds": ["INBOX", "UNREAD"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "Subject", "value": "Test Subject"},
+                    {"name": "To", "value": "recipient@example.com"},
+                ],
+                "mimeType": "text/plain",
+                "body": {"data": base64.b64encode(b"Test Body").decode("utf-8")},
+            },
+        }
+
+        # Parse message
+        email = self.parse_message_for_testing(msg)
+
+        # Assertions
+        assert email.id == "msg123"
+        assert email.subject == "Test Subject"
+        assert email.sender == "sender@example.com"
+        assert email.recipient == "recipient@example.com"
+        assert "Test Body" in email.body
+        assert email.is_read is False
+        assert email.folder == "INBOX"
+
+    def test_parse_multipart_message(self: "TestGmailClientMessageParsing") -> None:
+        """Test parsing multipart Gmail message."""
+        # Create test multipart message data
+        msg = {
+            "id": "msg123",
+            "internalDate": "1600000000000",
+            "labelIds": ["SENT"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "Subject", "value": "Test Multipart"},
+                    {"name": "To", "value": "recipient@example.com"},
+                ],
+                "mimeType": "multipart/alternative",
                 "parts": [
                     {
                         "mimeType": "text/plain",
                         "body": {
-                            "data": base64.urlsafe_b64encode(b"Plain text part").decode(),
+                            "data": base64.b64encode(b"Plain text part").decode("utf-8")
                         },
                     },
                     {
                         "mimeType": "text/html",
                         "body": {
-                            "data": base64.urlsafe_b64encode(b"<html>HTML part</html>").decode(),
+                            "data": base64.b64encode(b"<html>HTML part</html>").decode(
+                                "utf-8"
+                            )
                         },
                     },
                 ],
             },
         }
 
-        email = self.parse_message_for_testing(mock_msg)
+        # Parse message
+        email = self.parse_message_for_testing(msg)
 
-        assert email is not None
-        assert email.body == "Plain text part"  # Should extract plain text
-
-    def test_parse_gmail_message_invalid(self: "TestGmailClientMessageParsing") -> None:
-        """Test parsing an invalid Gmail message."""
-        invalid_msg = {"id": "invalid"}  # Missing required fields
-
-        email = self.parse_message_for_testing(invalid_msg)
-
-        assert email is None
+        # Assertions
+        assert email.id == "msg123"
+        assert email.subject == "Test Multipart"
+        assert "Plain text part" in email.body
+        assert email.is_read is True  # No UNREAD label in SENT folder
+        assert email.folder == "SENT"

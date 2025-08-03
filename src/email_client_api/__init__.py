@@ -6,10 +6,17 @@ email service providers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterator, Optional, TypeVar
+from collections.abc import Iterator
+from typing import Any, Optional, TypeVar
 
 __version__ = "0.1.0"
-__all__ = ["EmailClient", "EmailMessage", "AuthenticationError", "EmailClientError", "get_client"]
+__all__ = [
+    "EmailClient",
+    "EmailMessage",
+    "AuthenticationError",
+    "EmailClientError",
+    "get_client",
+]
 
 
 class EmailClientError(Exception):
@@ -50,11 +57,11 @@ class Attachment:
     def get_content(self: "Attachment") -> bytes:
         """Get the attachment content.
 
-        Returns:
+        Returns
         -------
             Binary content of the attachment
 
-        Raises:
+        Raises
         ------
             EmailClientError: If content cannot be retrieved
         """
@@ -103,11 +110,11 @@ class EmailMessage:
         self.attachments = attachments or []
         # Add aliases to match README API
         self.from_ = sender
-    
+
     def to_dict(self: "EmailMessage") -> dict[str, Any]:
         """Convert email message to dictionary format.
 
-        Returns:
+        Returns
         -------
             Dict containing email data
         """
@@ -125,7 +132,8 @@ class EmailMessage:
         }
 
 
-T = TypeVar('T', bound='EmailClient')
+T = TypeVar("T", bound="EmailClient")
+
 
 class EmailClient(ABC):
     """Abstract base class defining the email client interface.
@@ -217,17 +225,19 @@ class EmailClient(ABC):
     def authenticate(self: T) -> bool:
         """Authenticate with the email service.
 
-        Returns:
+        Returns
         -------
             bool: True if authentication successful, False otherwise
 
-        Raises:
+        Raises
         ------
             AuthenticationError: If authentication fails
         """
-    
+
     # Additional methods from README
-    def get_messages(self: T, folder: str = "INBOX", limit: int = 10) -> Iterator[EmailMessage]:
+    def get_messages(
+        self: T, folder: str = "INBOX", limit: int = 10
+    ) -> Iterator[EmailMessage]:
         """Get messages from a folder.
 
         Args:
@@ -247,9 +257,11 @@ class EmailClient(ABC):
         emails = self.retrieve_emails(folder=folder, limit=limit)
         for email in emails:
             yield email
-    
+
     @abstractmethod
-    def search_messages(self: T, query: str, folder: str = "INBOX") -> Iterator[EmailMessage]:
+    def search_messages(
+        self: T, query: str, folder: str = "INBOX"
+    ) -> Iterator[EmailMessage]:
         """Search for messages matching a query.
 
         Args:
@@ -266,16 +278,16 @@ class EmailClient(ABC):
             AuthenticationError: If authentication with email service fails
             EmailClientError: If search fails
         """
-    
+
     @abstractmethod
     def get_folders(self: T) -> list[str]:
         """Get available folders/labels.
 
-        Returns:
+        Returns
         -------
             List of folder/label names
 
-        Raises:
+        Raises
         ------
             AuthenticationError: If authentication with email service fails
             EmailClientError: If folder retrieval fails
@@ -284,16 +296,16 @@ class EmailClient(ABC):
 
 def get_client(provider: str = "gmail", **kwargs: Any) -> EmailClient:
     """Get an email client implementation.
-    
+
     Args:
     ----
         provider: Email provider name (default: "gmail")
         **kwargs: Additional configuration parameters for the client
-        
+
     Returns:
     -------
         An EmailClient implementation
-        
+
     Raises:
     ------
         ValueError: If the provider is not supported
@@ -301,6 +313,7 @@ def get_client(provider: str = "gmail", **kwargs: Any) -> EmailClient:
     if provider.lower() == "gmail":
         # Import here to avoid circular imports
         from gmail_client_impl import GmailClient
+
         return GmailClient(**kwargs)
-    
+
     raise ValueError(f"Email provider '{provider}' is not supported")

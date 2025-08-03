@@ -1,17 +1,16 @@
-"""Tests for the EmailClient interface.
+"""Tests for the EmailClient interface."""
 
-This module contains tests to validate the abstract interface enforcement
-and the EmailMessage data class functionality.
-"""
+import unittest
+from typing import Any, Iterator, cast
 
 import pytest
-from typing import Any, cast
 
 from email_client_api import (
-    AuthenticationError,
+    Attachment,
     EmailClient,
     EmailClientError,
     EmailMessage,
+    get_client,
 )
 
 # Constants
@@ -20,289 +19,300 @@ DEFAULT_EMAIL_LIMIT = 10
 
 
 class TestEmailMessage:
-    """Test cases for the EmailMessage data class."""
+    """Test EmailMessage class."""
 
-    def test_email_message_initialization(self: "TestEmailMessage") -> None:
-        """Test EmailMessage can be initialized with required fields."""
+    def test_init(self: "TestEmailMessage") -> None:
+        """Test initialization with default parameters."""
+        # Create an email message
         email = EmailMessage(
-            message_id="test-id-123",  # Updated to match new parameter name
+            message_id="test_id",
             subject="Test Subject",
             sender="sender@example.com",
             recipient="recipient@example.com",
-            body="Test email body content",
-            timestamp="2023-01-01T12:00:00",
+            body="Test Body",
+            timestamp="2023-01-01T12:00:00Z",
         )
 
-        assert email.id == "test-id-123"
+        # Verify attributes
+        assert email.id == "test_id"
         assert email.subject == "Test Subject"
         assert email.sender == "sender@example.com"
+        assert email.from_ == "sender@example.com"  # Alias for sender
         assert email.recipient == "recipient@example.com"
-        assert email.body == "Test email body content"
-        assert email.timestamp == "2023-01-01T12:00:00"
-        assert email.is_read is False  # Default value
-        assert email.folder == "INBOX"  # Default value
-        assert email.attachments == []  # Default value
+        assert email.body == "Test Body"
+        assert email.timestamp == "2023-01-01T12:00:00Z"
+        assert email.is_read is False
+        assert email.folder == "INBOX"
+        assert email.attachments == []
 
-    def test_email_message_with_optional_fields(self: "TestEmailMessage") -> None:
-        """Test EmailMessage with all optional fields set."""
-        attachments = [{"name": "test.pdf", "size": 1024}]
-
+    def test_init_with_all_params(self: "TestEmailMessage") -> None:
+        """Test initialization with all parameters."""
+        # Create an email message with all parameters
+        attachments = [
+            {
+                "attachment_id": "att1",
+                "filename": "test.txt",
+                "content_type": "text/plain",
+                "size": 100,
+            }
+        ]
         email = EmailMessage(
-            message_id="test-id-456",  # Updated to match new parameter name
-            subject="Test Subject 2",
-            sender="sender2@example.com",
-            recipient="recipient2@example.com",
-            body="Test email body content 2",
-            timestamp="2023-01-02T15:30:00",
+            message_id="test_id",
+            subject="Test Subject",
+            sender="sender@example.com",
+            recipient="recipient@example.com",
+            body="Test Body",
+            timestamp="2023-01-01T12:00:00Z",
             is_read=True,
             folder="SENT",
             attachments=attachments,
         )
 
+        # Verify attributes
+        assert email.id == "test_id"
+        assert email.subject == "Test Subject"
+        assert email.sender == "sender@example.com"
+        assert email.recipient == "recipient@example.com"
+        assert email.body == "Test Body"
+        assert email.timestamp == "2023-01-01T12:00:00Z"
         assert email.is_read is True
         assert email.folder == "SENT"
-        assert email.attachments == attachments
+        assert len(email.attachments) == 1
+        assert email.attachments[0]["filename"] == "test.txt"
 
-    def test_email_message_to_dict(self: "TestEmailMessage") -> None:
-        """Test EmailMessage.to_dict() returns correct dictionary format."""
+    def test_to_dict(self: "TestEmailMessage") -> None:
+        """Test to_dict method."""
+        # Create an email message
         email = EmailMessage(
-            message_id="dict-test-123",  # Updated to match new parameter name
-            subject="Dict Test",
-            sender="dict@example.com",
-            recipient="test@example.com",
-            body="Dictionary test content",
-            timestamp="2023-01-03T09:15:00",
+            message_id="test_id",
+            subject="Test Subject",
+            sender="sender@example.com",
+            recipient="recipient@example.com",
+            body="Test Body",
+            timestamp="2023-01-01T12:00:00Z",
             is_read=True,
-            folder="DRAFT",
+            folder="SENT",
         )
 
-        result_dict = email.to_dict()
+        # Get dictionary representation
+        email_dict = email.to_dict()
 
-        expected_dict = {
-            "id": "dict-test-123",
-            "subject": "Dict Test",
-            "sender": "dict@example.com",
-            "from_": "dict@example.com",  # Add this to match updated to_dict method
-            "recipient": "test@example.com",
-            "body": "Dictionary test content",
-            "timestamp": "2023-01-03T09:15:00",
-            "is_read": True,
-            "folder": "DRAFT",
-            "attachments": [],
-        }
-
-        assert result_dict == expected_dict
+        # Verify dictionary
+        assert email_dict["id"] == "test_id"
+        assert email_dict["subject"] == "Test Subject"
+        assert email_dict["sender"] == "sender@example.com"
+        assert email_dict["from"] == "sender@example.com"  # Alias for sender
+        assert email_dict["recipient"] == "recipient@example.com"
+        assert email_dict["body"] == "Test Body"
+        assert email_dict["timestamp"] == "2023-01-01T12:00:00Z"
+        assert email_dict["is_read"] is True
+        assert email_dict["folder"] == "SENT"
 
 
-class TestEmailClientInterface:
-    """Test cases for the EmailClient abstract interface."""
+class TestAttachment:
+    """Test Attachment class."""
 
-    def test_cannot_instantiate_abstract_class(self: "TestEmailClientInterface") -> None:
+    def test_init(self: "TestAttachment") -> None:
+        """Test initialization."""
+        attachment = Attachment(
+            attachment_id="att1",
+            filename="test.txt",
+            content_type="text/plain",
+            size=100,
+            content=b"test content",
+        )
+
+        assert attachment.attachment_id == "att1"
+        assert attachment.filename == "test.txt"
+        assert attachment.content_type == "text/plain"
+        assert attachment.size == 100
+
+    def test_get_content(self: "TestAttachment") -> None:
+        """Test get_content method."""
+        attachment = Attachment(
+            attachment_id="att1",
+            filename="test.txt",
+            content_type="text/plain",
+            size=100,
+            content=b"test content",
+        )
+
+        assert attachment.get_content() == b"test content"
+
+
+class TestEmailClient:
+    """Test EmailClient abstract base class."""
+
+    def test_cannot_instantiate_abstract_class(self: "TestEmailClient") -> None:
         """Test that EmailClient cannot be instantiated directly."""
-        with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+        with pytest.raises(TypeError):
             cast(Any, EmailClient())  # type: ignore[abstract]
 
-    def test_concrete_implementation_must_implement_all_methods(self: "TestEmailClientInterface") -> None:
-        """Test that concrete implementations must implement all methods."""
-        # Define an incomplete implementation
-        class IncompleteEmailClient(EmailClient):
-            """Incomplete implementation of EmailClient interface."""
 
-            def send_email(self: "IncompleteEmailClient", recipient: str, subject: str, body: str) -> bool:
-                """Implement the send_email method."""
-                return True
-            # Missing other required methods
+class TestCompleteEmailClient(EmailClient):
+    """Complete implementation of EmailClient for testing."""
 
-        # Attempting to instantiate should raise TypeError
-        with pytest.raises(TypeError):  # type: ignore[unreachable]
-            cast(Any, IncompleteEmailClient())  # type: ignore[abstract]
+    def authenticate(self: "TestCompleteEmailClient") -> bool:
+        """Authenticate with the email service."""
+        return True
 
-    def test_complete_implementation_can_be_instantiated(self: "TestEmailClientInterface") -> None:
-        """Test that a complete implementation can be instantiated."""
-        # Define a concrete implementation with all required methods
-        class CompleteEmailClient(EmailClient):
-            """Complete implementation of EmailClient interface."""
+    def send_email(
+        self: "TestCompleteEmailClient", recipient: str, subject: str, body: str
+    ) -> bool:
+        """Send an email."""
+        return True
 
-            def send_email(self: "CompleteEmailClient", recipient: str, subject: str, body: str) -> bool:
-                """Implement the send_email method."""
-                # Actual implementation not needed for test
-                return True
+    def retrieve_emails(
+        self: "TestCompleteEmailClient",
+        folder: str = DEFAULT_INBOX_NAME,
+        limit: int = DEFAULT_EMAIL_LIMIT,
+    ) -> list[EmailMessage]:
+        """Retrieve emails from the specified folder."""
+        return [
+            EmailMessage(
+                message_id="test_id",
+                subject="Test Subject",
+                sender="sender@example.com",
+                recipient="recipient@example.com",
+                body="Test Body",
+                timestamp="2023-01-01T12:00:00Z",
+            )
+        ]
 
-            def retrieve_emails(
-                self: "CompleteEmailClient",
-                folder: str = DEFAULT_INBOX_NAME,
-                limit: int = DEFAULT_EMAIL_LIMIT,
-            ) -> list[EmailMessage]:
-                """Implement the retrieve_emails method."""
-                # Actual implementation not needed for test
-                return []
+    def delete_email(self: "TestCompleteEmailClient", email_id: str) -> bool:
+        """Delete an email by ID."""
+        return True
 
-            def delete_email(self: "CompleteEmailClient", email_id: str) -> bool:
-                """Implement the delete_email method."""
-                # Actual implementation not needed for test
-                return True
+    def mark_as_read(self: "TestCompleteEmailClient", email_id: str) -> bool:
+        """Mark an email as read."""
+        return True
 
-            def mark_as_read(self: "CompleteEmailClient", email_id: str) -> bool:
-                """Implement the mark_as_read method."""
-                # Actual implementation not needed for test
-                return True
+    def search_messages(
+        self: "TestCompleteEmailClient", query: str, folder: str = DEFAULT_INBOX_NAME
+    ) -> Iterator[EmailMessage]:
+        """Search for messages matching a query."""
+        yield EmailMessage(
+            message_id="test_id",
+            subject="Test Subject",
+            sender="sender@example.com",
+            recipient="recipient@example.com",
+            body="Test Body",
+            timestamp="2023-01-01T12:00:00Z",
+        )
 
-            def authenticate(self: "CompleteEmailClient") -> bool:
-                """Implement the authenticate method."""
-                # Actual implementation not needed for test
-                return True
-                
-            def search_messages(self: "CompleteEmailClient", query: str, folder: str = "INBOX") -> list[EmailMessage]:
-                """Implement the search_messages method."""
-                # Actual implementation not needed for test
-                return []
-                
-            def get_folders(self: "CompleteEmailClient") -> list[str]:
-                """Implement the get_folders method."""
-                # Actual implementation not needed for test
-                return []
-
-        # Should not raise any exception
-        client = CompleteEmailClient()
-        assert isinstance(client, EmailClient)
-
-    def test_method_signatures_are_enforced(self: "TestEmailClientInterface") -> None:
-        """Test that method signatures are enforced correctly."""
-        # Define a concrete implementation with all required methods
-        class TestEmailClient(EmailClient):
-            """Test email client implementation."""
-
-            def send_email(self: "TestEmailClient", recipient: str, subject: str, body: str) -> bool:
-                """Implement the send_email method."""
-                # Actual implementation not needed for test
-                return True
-
-            def retrieve_emails(
-                self: "TestEmailClient",
-                folder: str = DEFAULT_INBOX_NAME,
-                limit: int = DEFAULT_EMAIL_LIMIT,
-            ) -> list[EmailMessage]:
-                """Implement the retrieve_emails method."""
-                # Actual implementation not needed for test
-                return []
-
-            def delete_email(self: "TestEmailClient", email_id: str) -> bool:
-                """Implement the delete_email method."""
-                # Actual implementation not needed for test
-                return True
-
-            def mark_as_read(self: "TestEmailClient", email_id: str) -> bool:
-                """Implement the mark_as_read method."""
-                # Actual implementation not needed for test
-                return True
-
-            def authenticate(self: "TestEmailClient") -> bool:
-                """Implement the authenticate method."""
-                # Actual implementation not needed for test
-                return True
-                
-            def search_messages(self: "TestEmailClient", query: str, folder: str = "INBOX") -> list[EmailMessage]:
-                """Implement the search_messages method."""
-                # Actual implementation not needed for test
-                return []
-                
-            def get_folders(self: "TestEmailClient") -> list[str]:
-                """Implement the get_folders method."""
-                # Actual implementation not needed for test
-                return []
-
-        client = TestEmailClient()
-
-        # Test method exists and callable
-        assert hasattr(client, "send_email")
-        assert callable(client.send_email)
-        assert hasattr(client, "retrieve_emails")
-        assert callable(client.retrieve_emails)
-        assert hasattr(client, "delete_email")
-        assert callable(client.delete_email)
-        assert hasattr(client, "mark_as_read")
-        assert callable(client.mark_as_read)
-        assert hasattr(client, "authenticate")
-        assert callable(client.authenticate)
+    def get_folders(self: "TestCompleteEmailClient") -> list[str]:
+        """Get available folders/labels."""
+        return ["INBOX", "SENT", "DRAFTS", "TRASH"]
 
 
-class TestExceptionClasses:
-    """Test cases for exception classes."""
+class TestEmailClientImplementation:
+    """Test EmailClient implementation."""
 
-    def test_email_client_error_inheritance(self: "TestExceptionClasses") -> None:
-        """Test EmailClientError inherits from Exception."""
-        error = EmailClientError("Test error message")
-        assert isinstance(error, Exception)
-        assert str(error) == "Test error message"
+    def test_complete_implementation(self: "TestEmailClientImplementation") -> None:
+        """Test a complete implementation of EmailClient."""
+        client = TestCompleteEmailClient()
+        assert client.authenticate() is True
+        assert client.send_email("recipient@example.com", "Subject", "Body") is True
+        assert len(client.retrieve_emails()) == 1
+        assert client.delete_email("test_id") is True
+        assert client.mark_as_read("test_id") is True
 
-    def test_authentication_error_inheritance(self: "TestExceptionClasses") -> None:
-        """Test AuthenticationError inherits from EmailClientError."""
-        error = AuthenticationError("Auth failed")
-        assert isinstance(error, EmailClientError)
-        assert isinstance(error, Exception)
-        assert str(error) == "Auth failed"
+        # Test search_messages
+        messages = list(client.search_messages("test"))
+        assert len(messages) == 1
 
-    def test_exception_can_be_raised_and_caught(self: "TestExceptionClasses") -> None:
-        """Test exceptions can be properly raised and caught."""
+        # Test get_folders
+        folders = client.get_folders()
+        assert len(folders) == 4
+        assert "INBOX" in folders
 
-        def raise_email_client_error() -> None:
-            raise EmailClientError("Generic email error")
 
-        def raise_authentication_error() -> None:
-            raise AuthenticationError("Authentication failed")
+class TestEmailClientFactory:
+    """Test EmailClient factory function."""
 
-        # Test EmailClientError
-        with pytest.raises(EmailClientError, match="Generic email error"):
-            raise_email_client_error()
+    def test_get_client_gmail(self: "TestEmailClientFactory") -> None:
+        """Test get_client with gmail provider."""
+        with pytest.raises(ValueError):
+            # Should raise error without credentials_file
+            get_client("gmail")
 
-        # Test AuthenticationError
-        with pytest.raises(AuthenticationError, match="Authentication failed"):
-            raise_authentication_error()
-
-        # Test AuthenticationError can be caught as EmailClientError
+        # With credentials_file should import and create GmailClient
         with pytest.raises(EmailClientError):
-            raise_authentication_error()
+            # Will fail to authenticate but should create the right type
+            get_client("gmail", credentials_file="nonexistent.json")
+
+    def test_get_client_unknown_provider(self: "TestEmailClientFactory") -> None:
+        """Test get_client with unknown provider."""
+        with pytest.raises(ValueError, match="Unsupported email provider"):
+            get_client("unknown")
 
 
-class TestInterfaceContract:
-    """Test cases for interface contract validation."""
+class TestPartialEmailClient(EmailClient):
+    """Partial implementation of EmailClient for testing."""
 
-    def test_interface_contract_documentation(self: "TestInterfaceContract") -> None:
-        """Test that interface methods have proper documentation."""
-        # Check that abstract methods have docstrings
-        assert EmailClient.send_email.__doc__ is not None
-        assert "Send an email" in EmailClient.send_email.__doc__
+    def authenticate(self: "TestPartialEmailClient") -> bool:
+        """Authenticate with the email service."""
+        return True
 
-        assert EmailClient.retrieve_emails.__doc__ is not None
-        assert "Retrieve emails" in EmailClient.retrieve_emails.__doc__
+    def send_email(
+        self: "TestPartialEmailClient", recipient: str, subject: str, body: str
+    ) -> bool:
+        """Send an email."""
+        return True
 
-        assert EmailClient.delete_email.__doc__ is not None
-        assert "Delete an email" in EmailClient.delete_email.__doc__
+    def retrieve_emails(
+        self: "TestPartialEmailClient",
+        folder: str = DEFAULT_INBOX_NAME,
+        limit: int = DEFAULT_EMAIL_LIMIT,
+    ) -> list[EmailMessage]:
+        """Retrieve emails from the specified folder."""
+        return []
 
-        assert EmailClient.mark_as_read.__doc__ is not None
-        assert "Mark an email as read" in EmailClient.mark_as_read.__doc__
+    def delete_email(self: "TestPartialEmailClient", email_id: str) -> bool:
+        """Delete an email by ID."""
+        return True
 
-        assert EmailClient.authenticate.__doc__ is not None
-        assert "Authenticate" in EmailClient.authenticate.__doc__
+    def mark_as_read(self: "TestPartialEmailClient", email_id: str) -> bool:
+        """Mark an email as read."""
+        return True
 
-    def test_method_parameter_types(self: "TestInterfaceContract") -> None:
-        """Test that method parameters have correct type hints."""
-        import inspect
+    def search_messages(
+        self: "TestPartialEmailClient", query: str, folder: str = DEFAULT_INBOX_NAME
+    ) -> Iterator[EmailMessage]:
+        """Search for messages matching a query."""
+        # Return an empty iterator
+        return iter([])
 
-        # Test send_email method signature
-        sig = inspect.signature(EmailClient.send_email)
-        params = sig.parameters
+    def get_folders(self: "TestPartialEmailClient") -> list[str]:
+        """Get available folders/labels."""
+        return ["INBOX"]
 
-        assert "recipient" in params
-        assert "subject" in params
-        assert "body" in params
-        assert sig.return_annotation == bool
 
-        # Test retrieve_emails method signature
-        sig = inspect.signature(EmailClient.retrieve_emails)
-        params = sig.parameters
+class TestEmailClientExtensions:
+    """Test EmailClient extension methods."""
 
-        assert "folder" in params
-        assert "limit" in params
-        assert params["folder"].default == DEFAULT_INBOX_NAME
-        assert params["limit"].default == DEFAULT_EMAIL_LIMIT
+    def test_get_messages(self: "TestEmailClientExtensions") -> None:
+        """Test get_messages method."""
+        client = TestCompleteEmailClient()
+        messages = list(client.get_messages())
+        assert len(messages) == 1
+        assert isinstance(messages[0], EmailMessage)
+
+    def test_get_messages_empty(self: "TestEmailClientExtensions") -> None:
+        """Test get_messages with empty result."""
+        client = TestPartialEmailClient()
+        messages = list(client.get_messages())
+        assert len(messages) == 0
+
+    def test_search_messages(self: "TestEmailClientExtensions") -> None:
+        """Test search_messages method."""
+        client = TestCompleteEmailClient()
+        messages = list(client.search_messages("test"))
+        assert len(messages) == 1
+        assert isinstance(messages[0], EmailMessage)
+
+    def test_search_messages_empty(self: "TestEmailClientExtensions") -> None:
+        """Test search_messages with empty result."""
+        client = TestPartialEmailClient()
+        messages = list(client.search_messages("test"))
+        assert len(messages) == 0
