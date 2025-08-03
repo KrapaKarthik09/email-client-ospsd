@@ -232,4 +232,3 @@ client = GmailClient()
 ## Related Components
 
 - **Email Client API**: Abstract interface implemented by this component
-- **Email Analytics**: Can analyze emails retrieved by this component 

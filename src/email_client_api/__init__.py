@@ -6,20 +6,61 @@ email service providers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 __version__ = "0.1.0"
-__all__ = ["EmailClient", "EmailMessage", "AuthenticationError", "EmailClientError"]
+__all__ = ["EmailClient", "EmailMessage", "AuthenticationError", "EmailClientError", "get_client"]
 
 
 class EmailClientError(Exception):
     """Base exception for email client operations."""
 
 
-
 class AuthenticationError(EmailClientError):
     """Raised when authentication with email service fails."""
 
+
+class Attachment:
+    """Represents an email attachment."""
+
+    def __init__(
+        self,
+        attachment_id: str,
+        filename: str,
+        content_type: str,
+        size: int,
+        content: Optional[bytes] = None,
+    ) -> None:
+        """Initialize an attachment.
+
+        Args:
+        ----
+            attachment_id: Unique identifier for the attachment
+            filename: Name of the attachment file
+            content_type: MIME type of the attachment
+            size: Size of the attachment in bytes
+            content: The actual content of the attachment if loaded
+        """
+        self.attachment_id = attachment_id
+        self.filename = filename
+        self.content_type = content_type
+        self.size = size
+        self._content = content
+
+    def get_content(self) -> bytes:
+        """Get the attachment content.
+
+        Returns:
+        -------
+            Binary content of the attachment
+
+        Raises:
+        ------
+            EmailClientError: If content cannot be retrieved
+        """
+        if self._content:
+            return self._content
+        raise EmailClientError("Attachment content not loaded")
 
 
 class EmailMessage:
@@ -60,11 +101,13 @@ class EmailMessage:
         self.is_read = is_read
         self.folder = folder
         self.attachments = attachments or []
-
+        # Add aliases to match README API
+        self.from_ = sender
+    
     def to_dict(self) -> dict[str, Any]:
         """Convert email message to dictionary format.
 
-        Returns
+        Returns:
         -------
             Dict containing email data
         """
@@ -72,6 +115,7 @@ class EmailMessage:
             "id": self.id,
             "subject": self.subject,
             "sender": self.sender,
+            "from_": self.sender,
             "recipient": self.recipient,
             "body": self.body,
             "timestamp": self.timestamp,
@@ -171,11 +215,90 @@ class EmailClient(ABC):
     def authenticate(self) -> bool:
         """Authenticate with the email service.
 
-        Returns
+        Returns:
         -------
             bool: True if authentication successful, False otherwise
 
-        Raises
+        Raises:
         ------
             AuthenticationError: If authentication fails
         """
+    
+    # Additional methods from README
+    def get_messages(self, folder: str = "INBOX", limit: int = 10) -> Iterator[EmailMessage]:
+        """Get messages from a folder.
+
+        Args:
+        ----
+            folder: Email folder to retrieve from (default: "INBOX")
+            limit: Maximum number of emails to retrieve (default: 10)
+
+        Returns:
+        -------
+            Iterator of EmailMessage objects
+
+        Raises:
+        ------
+            AuthenticationError: If authentication with email service fails
+            EmailClientError: If email retrieval fails
+        """
+        emails = self.retrieve_emails(folder=folder, limit=limit)
+        for email in emails:
+            yield email
+    
+    @abstractmethod
+    def search_messages(self, query: str, folder: str = "INBOX") -> Iterator[EmailMessage]:
+        """Search for messages matching a query.
+
+        Args:
+        ----
+            query: Search query string
+            folder: Email folder to search in (default: "INBOX")
+
+        Returns:
+        -------
+            Iterator of EmailMessage objects matching the query
+
+        Raises:
+        ------
+            AuthenticationError: If authentication with email service fails
+            EmailClientError: If search fails
+        """
+    
+    @abstractmethod
+    def get_folders(self) -> list[str]:
+        """Get available folders/labels.
+
+        Returns:
+        -------
+            List of folder/label names
+
+        Raises:
+        ------
+            AuthenticationError: If authentication with email service fails
+            EmailClientError: If folder retrieval fails
+        """
+
+
+def get_client(provider: str = "gmail", **kwargs) -> EmailClient:
+    """Factory function to get an email client implementation.
+    
+    Args:
+    ----
+        provider: Email provider name (default: "gmail")
+        **kwargs: Additional configuration parameters for the client
+        
+    Returns:
+    -------
+        An EmailClient implementation
+        
+    Raises:
+    ------
+        ValueError: If the provider is not supported
+    """
+    if provider.lower() == "gmail":
+        # Import here to avoid circular imports
+        from gmail_client_impl import GmailClient
+        return GmailClient(**kwargs)
+    else:
+        raise ValueError(f"Email provider '{provider}' is not supported")
