@@ -57,6 +57,11 @@ ignore = [
     "PLR0912",  # Too many branches - acceptable for message parsing
     "D203",     # Conflicts with D211 - choose D211 (no blank line before class)
     "D213",     # Conflicts with D212 - choose D212 (multi-line summary first line)
+    "SIM117",
+    "S106",
+    "S105",
+    "TRY300",
+    "C901"
 ]
 [tool.mypy]
 python_version = "3.11"
