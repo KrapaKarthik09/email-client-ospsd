@@ -44,13 +44,14 @@ SCOPES = [
 # HTTP status codes
 HTTP_NOT_FOUND = 404
 
-# Default file paths (S105 fix - completely avoid any "token" or "password" keywords)
-DEFAULT_CREDENTIALS_PATH = "credentials.json"
-DEFAULT_AUTH_STORAGE_PATH = "token.json"  # Changed from DEFAULT_AUTH_TOKEN_PATH
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _raise_authentication_error(message: str) -> None:
+    """Abstract raise to an inner function (TRY301 fix)."""
+    raise AuthenticationError(message)
 
 
 class GmailClient(EmailClient):
@@ -62,8 +63,8 @@ class GmailClient(EmailClient):
 
     def __init__(
         self: "GmailClient",
-        credentials_file: str = DEFAULT_CREDENTIALS_PATH,
-        auth_storage_file: str = DEFAULT_AUTH_STORAGE_PATH,  # S105 fix - new parameter name
+        credentials_file: str = "credentials.json",
+        auth_storage_file: str = "token.json",  # S105 fix - avoid "token" in parameter
         scopes: Optional[list[str]] = None,
     ) -> None:
         """Initialize the Gmail client.
@@ -107,41 +108,39 @@ class GmailClient(EmailClient):
                 )
 
             # If there are no (valid) credentials available, let the user log in
-            # SIM102 fix - Combine nested if statements
-            if (
-                (not creds or not creds.valid)
-                and creds
-                and creds.expired
-                and creds.refresh_token
-            ):
-                try:
-                    creds.refresh(Request())
-                    logger.info("Access token refreshed successfully")
-                except Exception as e:
-                    logger.warning("Token refresh failed: %s", e)
-                    creds = None
-
-            # If still no valid credentials, perform OAuth flow
             if not creds or not creds.valid:
-                # Check credentials file exists
-                if not credentials_path.exists():
-                    error_msg = f"Credentials file not found: {self.credentials_file}"
-                    raise AuthenticationError(error_msg)
+                if creds and creds.expired and creds.refresh_token:
+                    try:
+                        creds.refresh(Request())
+                        logger.info("Access token refreshed successfully")
+                    except Exception as e:
+                        logger.warning("Token refresh failed: %s", e)
+                        creds = None
 
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(credentials_path),
-                    self.scopes,
-                )
-                creds = flow.run_local_server(port=8080)
-                logger.info("New credentials obtained")
+                # If still no valid credentials, perform OAuth flow
+                if not creds:
+                    # Check credentials file exists
+                    if not credentials_path.exists():
+                        error_msg = (
+                            f"Credentials file not found: {self.credentials_file}"
+                        )
+                        # TRY301 fix - Abstract raise to inner function (line 129)
+                        _raise_authentication_error(error_msg)
 
-                # Save the credentials for the next run
-                try:
-                    with token_path.open("w", encoding="utf-8") as token:
-                        token.write(creds.to_json())
-                except (AttributeError, TypeError):
-                    # Skip token writing in test environment where creds is a Mock
-                    logger.debug("Skipping token writing in test environment")
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        str(credentials_path),
+                        self.scopes,
+                    )
+                    creds = flow.run_local_server(port=8080)
+                    logger.info("New credentials obtained")
+
+                    # Save the credentials for the next run
+                    try:
+                        with token_path.open("w", encoding="utf-8") as token:
+                            token.write(creds.to_json())
+                    except (AttributeError, TypeError):
+                        # Skip token writing in test environment where creds is a Mock
+                        logger.debug("Skipping token writing in test environment")
 
         except AuthenticationError:
             # Re-raise authentication errors without wrapping
@@ -150,7 +149,7 @@ class GmailClient(EmailClient):
             logger.exception("Authentication failed")
             raise AuthenticationError(f"Gmail authentication failed: {e}") from e
         else:
-            # TRY300 fix - Move success logic to else block (line 75 fix)
+            # Move success logic to else block
             # Set instance variables and build service
             self.credentials = creds
             self.service = build("gmail", "v1", credentials=creds)
@@ -475,7 +474,7 @@ class GmailClient(EmailClient):
             error_msg = f"Failed to retrieve folders: {e}"
             raise EmailClientError(error_msg) from e
         else:
-            # TRY300 fix - Move success logic to else block (line 604 fix)
+            # TRY300 fix - Move success logic to else block (line 582)
             # Extract label names
             folder_list = [label["name"] for label in labels if label.get("name")]
             logger.info("Retrieved %d folders/labels", len(folder_list))
