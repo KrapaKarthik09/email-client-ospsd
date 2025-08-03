@@ -1,234 +1,163 @@
 # Gmail Client Implementation
 
-This component provides a concrete implementation of the EmailClient interface using Google's Gmail API. It demonstrates how to create a production-ready email client that adheres to the defined interface contract.
-
-## Overview
-
-The Gmail Client Implementation (`GmailClient`) is a concrete implementation of the abstract `EmailClient` interface. It provides full functionality for:
-
-- OAuth 2.0 authentication with Gmail
-- Sending emails through Gmail API
-- Retrieving emails from Gmail folders/labels
-- Deleting emails
-- Marking emails as read/unread
-- Proper error handling and logging
+This module provides a concrete implementation of the Email Client API using Google's Gmail API.
 
 ## Features
 
-### Authentication
-- **OAuth 2.0 Flow**: Secure authentication using Google's OAuth 2.0
-- **Token Management**: Automatic token refresh and storage
-- **Credentials Security**: Secure handling of sensitive authentication data
+- **OAuth2 Authentication**: Secure authentication with Gmail using OAuth2
+- **Email Operations**: Send, retrieve, delete, and manage emails
+- **Folder Management**: Access and list Gmail labels
+- **Search Functionality**: Search emails with Gmail's powerful search syntax
+- **Message Parsing**: Convert Gmail API messages to standardized EmailMessage objects
 
-### Email Operations
-- **Send Email**: Compose and send emails with proper MIME formatting
-- **Retrieve Emails**: Fetch emails from any Gmail folder/label
-- **Delete Emails**: Permanently delete emails from Gmail
-- **Mark as Read**: Update email read status
+## Prerequisites
 
-### Error Handling
-- **Robust Error Handling**: Comprehensive exception handling for API errors
-- **Logging**: Detailed logging for debugging and monitoring
-- **Graceful Degradation**: Proper fallback behavior for failed operations
+Before using this module, you need to:
 
-## Setup Instructions
+1. Create a Google Cloud Project
+2. Enable the Gmail API
+3. Create OAuth 2.0 credentials
+4. Download the credentials JSON file
 
-### 1. Gmail API Credentials
+## Setup
 
-Follow these steps to set up Gmail API access:
+### 1. Create a Google Cloud Project
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the Gmail API:
-   - Navigate to "APIs & Services" > "Library"
-   - Search for "Gmail API" and click "Enable"
-4. Create OAuth 2.0 credentials:
-   - Go to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" > "OAuth client ID"
-   - Select "Desktop application"
-   - Download the credentials JSON file
-5. Save the credentials file as `credentials.json` in your project root
+3. Navigate to "APIs & Services" > "Library"
+4. Search for "Gmail API" and enable it
 
-### 2. Required Scopes
+### 2. Create OAuth 2.0 Credentials
 
-The implementation requires these Gmail API scopes:
-- `https://www.googleapis.com/auth/gmail.readonly` - Read emails
-- `https://www.googleapis.com/auth/gmail.send` - Send emails
-- `https://www.googleapis.com/auth/gmail.modify` - Modify email labels
+1. Go to "APIs & Services" > "Credentials"
+2. Click "Create Credentials" > "OAuth client ID"
+3. Select "Desktop app" as the application type
+4. Enter a name for your credentials
+5. Click "Create" and download the JSON file
+6. Save the file as `credentials.json` in your project directory
 
-### 3. Environment Setup
+## Usage
 
-Create a `.env` file with your configuration:
-
-```bash
-GMAIL_CLIENT_ID=your_client_id_here
-GMAIL_CLIENT_SECRET=your_client_secret_here
-GMAIL_PROJECT_ID=your_project_id_here
-GMAIL_REDIRECT_URI=http://localhost:8080
-```
-
-## Usage Example
+### Basic Usage
 
 ```python
 from gmail_client_impl import GmailClient
 
-# Initialize the Gmail client
+# Initialize the client
 client = GmailClient(
-    credentials_file="credentials.json",
-    token_file="token.json"
+    credentials_file="path/to/credentials.json",
+    token_file="path/to/token.json",
 )
 
-# Authenticate with Gmail
-if client.authenticate():
-    print("Authentication successful!")
-    
-    # Send an email
-    success = client.send_email(
-        recipient="friend@example.com",
-        subject="Hello from Gmail API",
-        body="This email was sent using the Gmail API implementation!"
-    )
-    
-    if success:
-        print("Email sent successfully!")
-    
-    # Retrieve recent emails
-    emails = client.retrieve_emails(folder="INBOX", limit=5)
-    
-    for email in emails:
-        print(f"From: {email.sender}")
-        print(f"Subject: {email.subject}")
-        print(f"Date: {email.timestamp}")
-        print(f"Read: {email.is_read}")
-        print("---")
-        
-        # Mark unread emails as read
-        if not email.is_read:
-            client.mark_as_read(email.id)
-            print(f"Marked email {email.id} as read")
+# Authenticate (opens browser for first-time authentication)
+client.authenticate()
 
-else:
-    print("Authentication failed!")
+# Send an email
+client.send_email(
+    recipient="recipient@example.com",
+    subject="Test Email",
+    body="Hello from the Gmail Client!",
+)
+
+# Retrieve emails from inbox
+emails = client.retrieve_emails(folder="INBOX", limit=10)
+for email in emails:
+    print(f"Subject: {email.subject}, From: {email.sender}")
+
+# Search for emails
+for email in client.search_messages("important", folder="INBOX"):
+    print(f"Found: {email.subject}")
+
+# Delete an email
+client.delete_email(email_id="message_id_here")
+
+# Mark an email as read
+client.mark_as_read(email_id="message_id_here")
+
+# List folders/labels
+folders = client.get_folders()
+print("Available folders:", folders)
 ```
 
-## Advanced Usage
+### Using the Factory Function
 
-### Custom Scopes
+Alternatively, you can use the factory function from the email_client_api module:
 
 ```python
-from gmail_client_impl import GmailClient
+from email_client_api import get_client
 
-# Initialize with custom scopes
-custom_scopes = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send"
-]
+# Get a Gmail client
+client = get_client(
+    provider="gmail", 
+    credentials_file="path/to/credentials.json",
+)
 
-client = GmailClient(
-    credentials_file="my_credentials.json",
-    token_file="my_token.json", 
-    scopes=custom_scopes
+# Use the client as before
+client.authenticate()
+```
+
+## API Reference
+
+### Constructor
+
+```python
+GmailClient(
+    credentials_file: str = "credentials.json",
+    token_file: str = "token.json",
+    scopes: Optional[list[str]] = None,
 )
 ```
 
-### Error Handling
+- `credentials_file`: Path to the OAuth 2.0 credentials JSON file
+- `token_file`: Path to store the access token
+- `scopes`: List of Gmail API scopes (uses default scopes if None)
 
-```python
-from gmail_client_impl import GmailClient
-from email_client_api import AuthenticationError, EmailClientError
+### Methods
 
-client = GmailClient()
+#### `authenticate() -> bool`
 
-try:
-    client.authenticate()
-    emails = client.retrieve_emails()
-except AuthenticationError as e:
-    print(f"Authentication failed: {e}")
-except EmailClientError as e:
-    print(f"Email operation failed: {e}")
-```
+Authenticates with the Gmail API. Opens a browser window for the first authentication.
 
-## Testing
+#### `send_email(recipient: str, subject: str, body: str) -> bool`
 
-Run the component tests:
+Sends an email to the specified recipient.
 
-```bash
-# Run all tests
-pytest src/gmail_client_impl/tests/
+#### `retrieve_emails(folder: str = "INBOX", limit: int = 10) -> list[EmailMessage]`
 
-# Run with coverage
-pytest --cov=gmail_client_impl src/gmail_client_impl/tests/
+Retrieves emails from the specified folder.
 
-# Run specific test file
-pytest src/gmail_client_impl/tests/test_gmail.py
-```
+#### `delete_email(email_id: str) -> bool`
 
-## Architecture Notes
+Deletes an email by its ID.
 
-### Design Patterns
-- **Strategy Pattern**: Implements the EmailClient interface
-- **Factory Pattern**: Credential and service creation
-- **Template Method**: Consistent error handling across methods
+#### `mark_as_read(email_id: str) -> bool`
 
-### Security Considerations
-- OAuth 2.0 tokens are stored securely
-- No passwords or sensitive data in logs
-- Proper token refresh mechanisms
-- Secure credential file handling
+Marks an email as read.
 
-### Performance Considerations
-- Efficient message parsing
-- Batch operations where possible
-- Proper resource cleanup
-- Rate limiting compliance
+#### `search_messages(query: str, folder: str = "INBOX") -> Iterator[EmailMessage]`
 
-## Gmail API Specifics
+Searches for messages matching the query in the specified folder.
 
-### Labels vs Folders
-Gmail uses labels instead of traditional folders:
-- `INBOX` - Inbox messages
-- `SENT` - Sent messages  
-- `DRAFT` - Draft messages
-- `SPAM` - Spam messages
-- `TRASH` - Deleted messages
+#### `get_folders() -> list[str]`
 
-### Message IDs
-Gmail message IDs are unique strings that remain constant throughout the message lifecycle.
+Gets all available folders/labels.
 
-### Rate Limits
-The implementation respects Gmail API rate limits:
-- 1 billion quota units per day
-- 250 quota units per user per second
+## Error Handling
 
-## Troubleshooting
+The module raises two main types of exceptions:
 
-### Common Issues
+- `AuthenticationError`: When authentication fails
+- `EmailClientError`: When email operations fail
 
-1. **"Credentials file not found"**
-   - Ensure `credentials.json` exists in the specified path
-   - Check file permissions
+Always wrap API calls in try-except blocks to handle these exceptions gracefully.
 
-2. **"Authentication failed"**
-   - Verify OAuth 2.0 credentials are correct
-   - Check if Gmail API is enabled in Google Cloud Console
-   - Ensure redirect URI matches the one in credentials
+## Limitations
 
-3. **"Insufficient permissions"**
-   - Verify required scopes are included
-   - Re-authenticate to grant new permissions
+- Attachment handling is limited to metadata only
+- HTML emails are converted to plain text
+- OAuth2 authentication requires a web browser for the first authentication
 
-### Debug Mode
+## License
 
-Enable debug logging:
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-client = GmailClient()
-# Now all operations will show detailed logs
-```
-
-## Related Components
-
-- **Email Client API**: Abstract interface implemented by this component
+This module is part of the Email Client OSPSD project and is licensed under the MIT License.

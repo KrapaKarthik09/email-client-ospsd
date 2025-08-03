@@ -6,7 +6,7 @@ email service providers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, TypeVar
 
 __version__ = "0.1.0"
 __all__ = ["EmailClient", "EmailMessage", "AuthenticationError", "EmailClientError", "get_client"]
@@ -24,7 +24,7 @@ class Attachment:
     """Represents an email attachment."""
 
     def __init__(
-        self,
+        self: "Attachment",
         attachment_id: str,
         filename: str,
         content_type: str,
@@ -47,7 +47,7 @@ class Attachment:
         self.size = size
         self._content = content
 
-    def get_content(self) -> bytes:
+    def get_content(self: "Attachment") -> bytes:
         """Get the attachment content.
 
         Returns:
@@ -67,14 +67,14 @@ class EmailMessage:
     """Data class representing an email message."""
 
     def __init__(
-        self,
-        id: str,
+        self: "EmailMessage",
+        message_id: str,  # Renamed from 'id' to avoid shadowing builtin
         subject: str,
         sender: str,
         recipient: str,
         body: str,
         timestamp: str,
-        is_read: bool = False,
+        is_read: bool = False,  # FBT001/FBT002 can't be easily fixed here as it's part of the API
         folder: str = "INBOX",
         attachments: Optional[list[dict[str, Any]]] = None,
     ) -> None:
@@ -82,7 +82,7 @@ class EmailMessage:
 
         Args:
         ----
-            id: Unique email identifier
+            message_id: Unique email identifier
             subject: Email subject line
             sender: Sender email address
             recipient: Recipient email address
@@ -92,7 +92,7 @@ class EmailMessage:
             folder: Folder location of the email
             attachments: List of attachment metadata
         """
-        self.id = id
+        self.id = message_id  # Keep 'id' as attribute name for backward compatibility
         self.subject = subject
         self.sender = sender
         self.recipient = recipient
@@ -104,7 +104,7 @@ class EmailMessage:
         # Add aliases to match README API
         self.from_ = sender
     
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self: "EmailMessage") -> dict[str, Any]:
         """Convert email message to dictionary format.
 
         Returns:
@@ -125,6 +125,8 @@ class EmailMessage:
         }
 
 
+T = TypeVar('T', bound='EmailClient')
+
 class EmailClient(ABC):
     """Abstract base class defining the email client interface.
 
@@ -133,7 +135,7 @@ class EmailClient(ABC):
     """
 
     @abstractmethod
-    def send_email(self, recipient: str, subject: str, body: str) -> bool:
+    def send_email(self: T, recipient: str, subject: str, body: str) -> bool:
         """Send an email to a recipient.
 
         Args:
@@ -154,7 +156,7 @@ class EmailClient(ABC):
 
     @abstractmethod
     def retrieve_emails(
-        self,
+        self: T,
         folder: str = "INBOX",
         limit: int = 10,
     ) -> list[EmailMessage]:
@@ -176,7 +178,7 @@ class EmailClient(ABC):
         """
 
     @abstractmethod
-    def delete_email(self, email_id: str) -> bool:
+    def delete_email(self: T, email_id: str) -> bool:
         """Delete an email by its ID.
 
         Args:
@@ -194,7 +196,7 @@ class EmailClient(ABC):
         """
 
     @abstractmethod
-    def mark_as_read(self, email_id: str) -> bool:
+    def mark_as_read(self: T, email_id: str) -> bool:
         """Mark an email as read.
 
         Args:
@@ -212,7 +214,7 @@ class EmailClient(ABC):
         """
 
     @abstractmethod
-    def authenticate(self) -> bool:
+    def authenticate(self: T) -> bool:
         """Authenticate with the email service.
 
         Returns:
@@ -225,7 +227,7 @@ class EmailClient(ABC):
         """
     
     # Additional methods from README
-    def get_messages(self, folder: str = "INBOX", limit: int = 10) -> Iterator[EmailMessage]:
+    def get_messages(self: T, folder: str = "INBOX", limit: int = 10) -> Iterator[EmailMessage]:
         """Get messages from a folder.
 
         Args:
@@ -247,7 +249,7 @@ class EmailClient(ABC):
             yield email
     
     @abstractmethod
-    def search_messages(self, query: str, folder: str = "INBOX") -> Iterator[EmailMessage]:
+    def search_messages(self: T, query: str, folder: str = "INBOX") -> Iterator[EmailMessage]:
         """Search for messages matching a query.
 
         Args:
@@ -266,7 +268,7 @@ class EmailClient(ABC):
         """
     
     @abstractmethod
-    def get_folders(self) -> list[str]:
+    def get_folders(self: T) -> list[str]:
         """Get available folders/labels.
 
         Returns:
@@ -280,8 +282,8 @@ class EmailClient(ABC):
         """
 
 
-def get_client(provider: str = "gmail", **kwargs) -> EmailClient:
-    """Factory function to get an email client implementation.
+def get_client(provider: str = "gmail", **kwargs: Any) -> EmailClient:
+    """Get an email client implementation.
     
     Args:
     ----
@@ -300,5 +302,5 @@ def get_client(provider: str = "gmail", **kwargs) -> EmailClient:
         # Import here to avoid circular imports
         from gmail_client_impl import GmailClient
         return GmailClient(**kwargs)
-    else:
-        raise ValueError(f"Email provider '{provider}' is not supported")
+    
+    raise ValueError(f"Email provider '{provider}' is not supported")
