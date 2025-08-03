@@ -48,6 +48,7 @@ ignore = [
     "D104",     # Missing docstring in public package
     "D203",     # Conflicts with D211 - choose D211 (no blank line before class)
     "D213",     # Conflicts with D212 - choose D212 (multi-line summary first line)
+    "ANN401"
 ]
 
 [tool.mypy]
