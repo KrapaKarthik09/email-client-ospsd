@@ -5,7 +5,6 @@ requires-python = ">=3.12"
 members = [
     "my-inbox-api",
     "my-inbox-impl",
-    "team8-yotov-template-myinbox",
 ]
 
 [[package]]
