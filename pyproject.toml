@@ -1,183 +1,81 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "email-client-ospsd"
+name = "myinbox"
 version = "0.1.0"
-description = "A comprehensive email client with Gmail implementation"
+description = "Email Client Implementation"
 readme = "README.md"
-license = {text = "MIT"}
+requires-python = ">=3.12"
 authors = [
-    {name = "Karthik Krapa", email = "karthik.krapa@nyu.edu"}
+    {name = "Team8"}
 ]
-requires-python = ">=3.11"
+license = {file = "LICENSE"}
 dependencies = [
-    "google-auth==2.23.4",
-    "google-auth-oauthlib==1.1.0",
-    "google-auth-httplib2==0.1.1",
-    "google-api-python-client==2.108.0",
-    "python-dotenv==1.0.0",
+    "coverage>=7.6.12",
+    "mypy>=1.15.0",
+    "nose2>=0.15.1",
+    "pytest>=8.3.4",
+    "ruff>=0.9.6",
+    "uv>=0.6.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest==7.4.3",
-    "pytest-cov==4.1.0",
-    "pytest-asyncio==0.21.1",
-    "mypy==1.7.1",
-    "ruff==0.1.7",
-    "pre-commit==3.5.0",
-    "mkdocs==1.5.3",
-    "mkdocs-material==9.4.8",
-    "mkdocs-autorefs==0.5.0",
-    "mkdocstrings==0.24.0",
-    "mkdocstrings-python==1.7.5",
-    "coverage==7.3.2",
-    "types-requests==2.31.0.10",
-]
+[tool.uv.workspace]
+members = ["my_inbox_api", "my_inbox_impl"]
 
-[project.urls]
-Homepage = "https://github.com/kkrapa/email-client-ospsd"
-Repository = "https://github.com/kkrapa/email-client-ospsd"
-Issues = "https://github.com/kkrapa/email-client-ospsd/issues"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.ruff]
-target-version = "py311"
-line-length = 88
-select = [
-    "A",    # flake8-builtins
-    "ARG",  # flake8-unused-arguments
-    "B",    # flake8-bugbear
-    "C",    # flake8-comprehensions
-    "DTZ",  # flake8-datetimez
-    "E",    # Error
-    "EM",   # flake8-errmsg
-    "F",    # Pyflakes
-    "FBT",  # flake8-boolean-trap
-    "I",    # isort
-    "ICN",  # flake8-import-conventions
-    "N",    # pep8-naming
-    "PLC",  # Pylint
-    "PLE",  # Pylint
-    "PLR",  # Pylint
-    "PLW",  # Pylint
-    "Q",    # flake8-quotes
-    "RUF",  # Ruff-specific
-    "S",    # flake8-bandit
-    "T",    # flake8-debugger
-    "TID",  # flake8-tidy-imports
-    "UP",   # pyupgrade
-    "W",    # Warning
-    "YTT",  # flake8-2020
-]
-ignore = [
-    # Carefully considered ignores with justifications
-    "PLR0913",  # Too many arguments - sometimes necessary for comprehensive APIs
-    "E501",     # Line too long - handled by formatter and sometimes necessary for readability
-
-    # Type annotation related
-    "ANN101",   # Missing type annotation for `self` - redundant as self is always the class instance
-    "ANN401",   # Dynamically typed expressions - acceptable in specific scenarios
-
-    # Python compatibility related
-    "UP007",    # Use `X | Y` for type annotations - keeping compatibility with older Python versions
-    "UP006",    # Use `dict` instead of `Dict` - keeping compatibility with older Python versions
-    "UP035",    # `typing.*` is deprecated - keeping compatibility with older Python versions
-
-    # Docstring incompatibilities
-    "D211",     # No blank line before class docstring - conflicts with D203 which we prefer
-    "D213",     # Multi-line docstring summary start at second line - project uses first line (D212)
-    "D406",     # Section name should end with newline - our docstrings use a different format
-
-    # Exception handling
-    "TRY003",   # Avoid specifying long messages outside the exception class - acceptable for user-facing errors
-    "EM101",    # Exception must not use a string literal - acceptable for simple errors
-    "EM102",    # Exception must not use an f-string literal - needed for dynamic error messages
-    "TRY301",   # Abstract `raise` to inner function - overcomplicates simple error handling
-    "TRY300",   # Statement should be in else block - current flow is more readable
-    "TRY400",   # Use logging.exception - we prefer explicit error logging in some cases
-    "TRY401",   # Redundant exception object in logging.exception - acceptable for clarity
-
-    # TODO comment style
-    "TD002",    # Missing author in TODO - anonymous TODO is project convention
-    "TD003",    # Missing issue link - anonymous TODO is project convention
-    "FIX002",   # Line contains TODO - known task for future implementation
-
-    # Import structure
-    "E402",     # Module level import not at top of file - sometimes needed for path manipulation
-]
-
-[tool.ruff.isort]
-known-first-party = ["email_client_api", "gmail_client_impl", "email_analytics"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-extra_checks = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = "googleapiclient.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "google.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "google_auth_oauthlib.*"
-ignore_missing_imports = true
+[tool.uv.sources]
+my_inbox_api = { workspace = true }
+my_inbox_impl = { workspace = true }
 
 [tool.pytest.ini_options]
-minversion = "6.0"
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=src",
-    "--cov-branch",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov",
-    "--cov-report=xml",
-]
-testpaths = ["tests", "src"]
-filterwarnings = [
-    "error",
-    "ignore::UserWarning",
-    "ignore::DeprecationWarning",
-]
+testpaths = ["my_inbox_api/tests", "my_inbox_impl/tests"]
 
-[tool.coverage.run]
-source = ["src"]
-branch = true
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "D", "ANN", "PLR"]
+ignore = ["E501", "S101", "PLR2004","ANN101","D407","D406"] # ignore
 
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
+[tool.ruff.lint]
+select = ["E", "F", "W", "D", "ANN", "PLR"]
+ignore = [
+    "INP001",  # Ignore missing __init__.py for namespace packages
+    "D100",  # Ignore missing module-level docstrings
+    "D203", "D211",  # Conflicting rules about blank lines before class
+    "D212", "D213",  # Conflicting rules about multi-line docstrings
+    "S101",  # Ignore assert usage in tests
+    "T201",  # Ignore print statements in Logger component
+    "COM812",  # Suggested by ruff to disable it to avoid unexpected behavior
+    "PIE790", # Ignore unnecessary pass statement in interfaces
+    "ANN401", # Ignore dynamically typed expression are disallowed in interfaces
+    "F401", # Module imported but unused
+    "F823", # Local variable name shadows a built-in name
+    "PLR2004", # Too many branches
+    "ERA001", # File is not encoded with UTF-8
+    "F841", # Local variable assigned but not used
+    "F821", # Undefined name
+    "PGH003", # Use specific rule codes when ignoring type issues
+    "I001", # Import block is un-sorted or un-formatted
+    "N806", # Camelcase
+    "W292",
+    "UP035",
+    "Q000",
+    "PT009",
+    "W293",
+    "ANN201", "ANN001",
+    "D104",
+    "E501",
+    "D102",
+    "D413"
 ]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "ANN001", "ANN201"]

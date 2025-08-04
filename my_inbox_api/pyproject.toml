@@ -1,0 +1,21 @@
+[project]
+name = "my-inbox-api"
+version = "0.1.0"
+description = "Interface definitions for an email inbox client"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "coverage>=7.6.12",
+    "mypy>=1.15.0",
+    "nose2>=0.15.1",
+    "pytest>=8.3.4",
+    "ruff>=0.9.6",
+    "uv>=0.6.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
